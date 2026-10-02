@@ -112,15 +112,20 @@ async function decodeImage(file){
 }
 async function imageConvert(file,target){
   const img=await decodeImage(file);
-  const c=document.createElement("canvas"),w=img.naturalWidth||img.width,h=img.naturalHeight||img.height;
+  const w=img.naturalWidth||img.width,h=img.naturalHeight||img.height;
   if(!w||!h)throw new Error("The image has no usable dimensions.");
-  c.width=w;c.height=h;
+  const mw=maxWidth&&Number(maxWidth.value)>0?Math.min(12000,Number(maxWidth.value)):w;
+  const mh=maxHeight&&Number(maxHeight.value)>0?Math.min(12000,Number(maxHeight.value)):h;
+  const scale=Math.min(1,mw/w,mh/h);
+  const outW=Math.max(1,Math.round(w*scale)),outH=Math.max(1,Math.round(h*scale));
+  const c=document.createElement("canvas");c.width=outW;c.height=outH;
   const ctx=c.getContext("2d",{alpha:true});
-  if(target==="JPG"&&(!fitWhite||fitWhite.checked)){ctx.fillStyle="#fff";ctx.fillRect(0,0,w,h)}
+  if(target==="JPG"&&(!fitWhite||fitWhite.checked)){ctx.fillStyle="#fff";ctx.fillRect(0,0,outW,outH)}
   ctx.drawImage(img,0,0,outW,outH);
   const mime={JPG:"image/jpeg",PNG:"image/png",WEBP:"image/webp"}[target];
-  const blob=await canvasBlob(c,mime,Number(quality.value));
-  return {blob,name:outputName(file,target)};
+  const q=quality?Math.min(1,Math.max(0.01,Number(quality.value))):0.92;
+  const blob=await canvasBlob(c,mime,q);
+  return {blob,name:outputName(file,target),width:outW,height:outH};
 }
 async function imageToPdf(file){
   if(!window.jspdf||!window.jspdf.jsPDF)throw new Error("The PDF engine did not load. Refresh the page and try again.");
@@ -168,21 +173,46 @@ async function csvToJson(file){
 async function convertOne(file,item){
   try{
     if(isImageFormat(from)&&["JPG","PNG","WEBP"].includes(to)){const out=await imageConvert(file,to);download(out.blob,out.name);item.className="queue-item done";item.querySelector(".result").textContent="Converted ✓";return}
-    if(from==="PDF"&&["JPG","PNG","WEBP"].includes(to)){const outs=await pdfToImage(file,to);outs.forEach(out=>download(out.blob,out.name));item.className="queue-item done";item.querySelector(".result").textContent=`Converted ${outs.length} page${outs.length===1?"":"s"} ✓`;return}
+    if(from==="PDF"&&["JPG","PNG","WEBP"].includes(to)){const outs=await pdfToImage(file,to);if(outs.length>1&&window.JSZip){const zip=new JSZip();outs.forEach(out=>zip.file(out.name,out.blob));const archive=await zip.generateAsync({type:"blob"});download(archive,outputName(file,"zip"));item.className="queue-item done";item.querySelector(".result").textContent=`Converted ${outs.length} pages → ZIP ✓`;}else{outs.forEach(out=>download(out.blob,out.name));item.className="queue-item done";item.querySelector(".result").textContent=`Converted ${outs.length} page${outs.length===1?"":"s"} ✓`;}return}
     if(isImageFormat(from)&&to==="PDF"){await imageToPdf(file);item.className="queue-item done";item.querySelector(".result").textContent="Converted ✓";return}
     if(from==="JSON"&&to==="CSV"){const out=await jsonToCsv(file);download(out.blob,out.name);item.className="queue-item done";item.querySelector(".result").textContent="Converted ✓";return}
     if(from==="CSV"&&to==="JSON"){const out=await csvToJson(file);download(out.blob,out.name);item.className="queue-item done";item.querySelector(".result").textContent="Converted ✓";return}
     throw new Error("This conversion route is not enabled yet.");
   }catch(err){item.className="queue-item error";item.querySelector(".result").textContent=err.message||"Conversion failed."}
 }
+function humanSize(bytes){
+  if(bytes<1024)return bytes+" B";
+  const units=["KB","MB","GB"];let n=bytes/1024,i=0;
+  while(n>=1024&&i<units.length-1){n/=1024;i++}
+  return (n<10?n.toFixed(1):Math.round(n))+" "+units[i];
+}
+function renderQueueItem(file){
+  const item=document.createElement("div");item.className="queue-item";
+  const name=document.createElement("span");name.title=file.name;name.textContent=file.name;
+  const result=document.createElement("span");result.className="result";result.textContent=humanSize(file.size);
+  item.append(name,result);return item;
+}
+function validateFiles(files){
+  const maxFiles=20,maxSize=100*1024*1024;
+  if(files.length>maxFiles)throw new Error("Please convert up to 20 files at a time.");
+  const tooLarge=files.find(f=>f.size>maxSize);
+  if(tooLarge)throw new Error(tooLarge.name+" is larger than the 100 MB per-file limit.");
+  return files.filter(f=>f&&f.size>=0);
+}
 async function convertFiles(files){
   if(!from||!to||!supported(from,to))return;
+  let safeFiles;
+  try{safeFiles=validateFiles(files)}catch(err){status.textContent=err.message;return}
   queue.innerHTML="";
-  files.forEach(file=>{const item=document.createElement("div");item.className="queue-item";item.innerHTML=`<span title="${file.name}">${file.name}</span><span class="result">Waiting…</span>`;queue.appendChild(item)});
-  const items=[...queue.children];status.textContent=`Converting ${files.length} file${files.length>1?"s":""}…`;
-  for(let i=0;i<files.length;i++){await convertOne(files[i],items[i])}
+  safeFiles.forEach(file=>queue.appendChild(renderQueueItem(file)));
+  const items=[...queue.children];
+  status.textContent=`Converting ${safeFiles.length} file${safeFiles.length>1?"s":""}…`;
+  for(let i=0;i<safeFiles.length;i++){
+    items[i].querySelector(".result").textContent="Working…";
+    await convertOne(safeFiles[i],items[i]);
+  }
   const ok=items.filter(x=>x.classList.contains("done")).length;
-  status.textContent=`Finished — ${ok} of ${files.length} file${files.length>1?"s":""} converted.`;
+  status.textContent=`Finished — ${ok} of ${safeFiles.length} file${safeFiles.length>1?"s":""} converted.`;
 }
 window.pick=function(a,b){from=a;to=b;fromBtn.innerHTML=`${a} <span>⌄</span>`;toBtn.innerHTML=`${b} <span>⌄</span>`;refresh();const target=$("#converter")||$("#tool");if(target)target.scrollIntoView({behavior:"smooth"})};
 const routeSlug={"HEIC-JPG":"heic-to-jpg.html","HEIC-PNG":"heic-to-png.html","WEBP-JPG":"webp-to-jpg.html","WEBP-PNG":"webp-to-png.html","PNG-WEBP":"png-to-webp.html","JPG-WEBP":"jpg-to-webp.html","JPG-PNG":"jpg-to-png.html","SVG-PNG":"svg-to-png.html","AVIF-JPG":"avif-to-jpg.html","JSON-CSV":"json-to-csv.html","CSV-JSON":"csv-to-json.html","JPG-PDF":"jpg-to-pdf.html","PNG-PDF":"png-to-pdf.html","PDF-JPG":"pdf-to-jpg.html","PDF-PNG":"pdf-to-png.html","TIFF-JPG":"tiff-to-jpg.html"};
