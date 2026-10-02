@@ -12,7 +12,7 @@ function buildMenu(menu,btn,setter){
 buildMenu(fromMenu,fromBtn,f=>{from=f;fromBtn.innerHTML=`${f} <span>⌄</span>`;refresh()});
 buildMenu(toMenu,toBtn,f=>{to=f;toBtn.innerHTML=`${f} <span>⌄</span>`;refresh()});
 document.addEventListener("click",e=>{if(!e.target.closest(".format-pick")){fromMenu.classList.remove("open");toMenu.classList.remove("open")}});
-quality.addEventListener("input",()=>qualityValue.value=`${Math.round(Number(quality.value)*100)}%`);
+if(quality) quality.addEventListener("input",()=>{if(qualityValue)qualityValue.value=`${Math.round(Number(quality.value)*100)}%`});
 
 function isImageFormat(f){return ["JPG","PNG","WEBP","GIF","BMP","AVIF","HEIC","SVG"].includes(f)}
 function supported(from,to){
@@ -81,7 +81,7 @@ async function imageConvert(file,target){
   if(!w||!h)throw new Error("The image has no usable dimensions.");
   c.width=w;c.height=h;
   const ctx=c.getContext("2d",{alpha:true});
-  if(target==="JPG"&&fitWhite.checked){ctx.fillStyle="#fff";ctx.fillRect(0,0,w,h)}
+  if(target==="JPG"&&(!fitWhite||fitWhite.checked)){ctx.fillStyle="#fff";ctx.fillRect(0,0,w,h)}
   ctx.drawImage(img,0,0,w,h);
   const mime={JPG:"image/jpeg",PNG:"image/png",WEBP:"image/webp"}[target];
   const blob=await canvasBlob(c,mime,Number(quality.value));
