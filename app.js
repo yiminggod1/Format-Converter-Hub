@@ -25,12 +25,16 @@ function supported(from,to){
 function refresh(){
   const ready=from&&to&&supported(from,to);
   selectFile.disabled=!ready;
-  fileInput.accept=from?({JPG:"image/jpeg,.jpg,.jpeg",PNG:"image/png,.png",WEBP:"image/webp,.webp",GIF:"image/gif,.gif",BMP:"image/bmp,.bmp",TIFF:"image/tiff,.tif,.tiff",AVIF:"image/avif,.avif",HEIC:"image/heic,.heic,.heif",SVG:"image/svg+xml,.svg",PDF:"application/pdf,.pdf",JSON:"application/json,.json",CSV:"text/csv,.csv"}[from]||""):("");
+  fromMenu.querySelectorAll("button").forEach(btn=>{btn.disabled=!!to&&!supported(btn.dataset.format,to)});
+  toMenu.querySelectorAll("button").forEach(btn=>{btn.disabled=!!from&&!supported(from,btn.dataset.format)});
+  fileInput.accept=from?({JPG:"image/jpeg,.jpg,.jpeg",PNG:"image/png,.png",WEBP:"image/webp,.webp",GIF:"image/gif,.gif",BMP:"image/bmp,.bmp",TIFF:"image/tiff,.tif,.tiff",AVIF:"image/avif,.avif",HEIC:"image/heic,.heic,.heif",SVG:"image/svg+xml,.svg",PDF:"application/pdf,.pdf",JSON:"application/json,.json",CSV:"text/csv,.csv"}[from]||""):"";
   if(from&&to){
     if(from===to)status.textContent="Choose two different formats.";
-    else if(ready)status.textContent=`${from} → ${to} is ready. Choose one or more files to begin.`;
-    else status.textContent=`${from} → ${to} is on the roadmap. Choose a highlighted route for a working conversion.`;
-  }else status.textContent="";
+    else if(ready)status.textContent=from+" → "+to+" is ready. Choose one or more files to begin.";
+    else status.textContent=from+" → "+to+" is not available yet. Choose an enabled route or change the target format.";
+  }else if(from&&!to)status.textContent=from+" selected. Now choose a compatible output format.";
+  else if(to&&!from)status.textContent=to+" selected. Now choose a compatible source format.";
+  else status.textContent="";
 }
 selectFile.addEventListener("click",()=>fileInput.click());
 dropzone.addEventListener("click",()=>{if(!selectFile.disabled)fileInput.click()});
@@ -212,8 +216,14 @@ async function deliverOutputs(outputs){
   if(!outputs.length)return;
   if(outputs.length===1){download(outputs[0].blob,outputs[0].name);return}
   try{
-    const Zip=await ensureZip(),zip=new Zip();
-    outputs.forEach(out=>zip.file(out.name,out.blob));
+    const Zip=await ensureZip(),zip=new Zip(),used=new Set();
+    outputs.forEach(out=>{
+      let name=out.name,base=name,ext="";
+      const dot=name.lastIndexOf(".");
+      if(dot>0){base=name.slice(0,dot);ext=name.slice(dot)}
+      let n=2;while(used.has(name))name=base+" ("+n+++ ")"+ext;
+      used.add(name);zip.file(name,out.blob);
+    });
     const archive=await zip.generateAsync({type:"blob"});
     download(archive,"format-converter-results.zip");
   }catch(err){
