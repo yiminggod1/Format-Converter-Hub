@@ -384,7 +384,7 @@ async function imageToPdf(files){
     pdf.addImage(canvas.toDataURL("image/jpeg",q),"JPEG",(pageWidth-drawWidth)/2,(pageHeight-drawHeight)/2,drawWidth,drawHeight);
     if(status)status.textContent="Building PDF page "+(index+1)+" of "+files.length+"…";
   }
-  return {blob:pdf.output("blob"),name:outputName(files[0],files.length>1?"pdf":"pdf")};
+  return {blob:pdf.output("blob"),name:outputName(files[0],files.length>1?"-combined.pdf".replace(".pdf","")+".pdf":"pdf")};
 }
 
 async function jsonToCsv(file){
