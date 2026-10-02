@@ -37,7 +37,8 @@ function refresh(){
   else status.textContent="";
 }
 selectFile.addEventListener("click",()=>fileInput.click());
-dropzone.addEventListener("click",()=>{if(!selectFile.disabled)fileInput.click()});\ndropzone.setAttribute("role","button");dropzone.tabIndex=0;dropzone.addEventListener("keydown",e=>{if((e.key==="Enter"||e.key===" ")&&!selectFile.disabled){e.preventDefault();fileInput.click()}});
+dropzone.addEventListener("click",()=>{if(!selectFile.disabled)fileInput.click()});
+dropzone.setAttribute("role","button");dropzone.tabIndex=0;dropzone.addEventListener("keydown",e=>{if((e.key==="Enter"||e.key===" ")&&!selectFile.disabled){e.preventDefault();fileInput.click()}});
 dropzone.addEventListener("dragover",e=>{e.preventDefault();dropzone.classList.add("is-dragging")});
 dropzone.addEventListener("dragleave",()=>dropzone.classList.remove("is-dragging"));
 dropzone.addEventListener("drop",e=>{e.preventDefault();dropzone.classList.remove("is-dragging");if(!selectFile.disabled&&e.dataTransfer.files.length)convertFiles([...e.dataTransfer.files])});
@@ -157,7 +158,8 @@ async function jsonToCsv(file){
   const keys=[];rows.forEach(o=>Object.keys(o&&typeof o==="object"?o:{}).forEach(k=>{if(!keys.includes(k))keys.push(k)}));
   if(!keys.length)throw new Error("JSON must contain one or more object fields.");
   const esc=v=>`"${String(v==null?"":typeof v==="object"?JSON.stringify(v):v).replace(/"/g,'""')}"`;
-  const csv=[keys.map(esc).join(","),...rows.map(o=>keys.map(k=>esc(o?o[k]:"")).join(","))].join("\r\n");
+  const csv=[keys.map(esc).join(","),...rows.map(o=>keys.map(k=>esc(o?o[k]:"")).join(","))].join("\r
+");
   return {blob:new Blob([csv],{type:"text/csv;charset=utf-8"}),name:outputName(file,"CSV")};
 }
 function parseCsv(text){
@@ -167,7 +169,8 @@ function parseCsv(text){
     if(quoted){if(ch==='"'&&next==='"'){cell+='"';i++}else if(ch==='"')quoted=false;else cell+=ch}
     else if(ch==='"'&&cell==="")quoted=true;
     else if(ch===","){row.push(cell);cell=""}
-    else if(ch==="\n"){row.push(cell);rows.push(row);row=[];cell=""}
+    else if(ch==="
+"){row.push(cell);rows.push(row);row=[];cell=""}
     else if(ch!=="\r")cell+=ch;
   }
   row.push(cell);if(row.length>1||row[0]!=="")rows.push(row);
