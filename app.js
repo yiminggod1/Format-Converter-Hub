@@ -1,5 +1,5 @@
 const formats=["JPG","PNG","WEBP","GIF","BMP","TIFF","SVG","AVIF","ICO","HEIC","PDF","JSON","CSV","TSV","XML","YAML","TXT","MD","HTML","WAV","MP3","OGG","M4A","MP4","WEBM","MOV"];
-const popular=[["HEIC","JPG","Convert HEIC photos to widely supported JPG images."],["WEBP","JPG","Turn modern web images into JPG files for broader compatibility."],["PNG","WEBP","Reduce image size for the web."],["JPG","PNG","Convert JPG images to lossless PNG."],["SVG","PNG","Rasterize vector artwork into PNG."],["AVIF","JPG","Convert AVIF images to broadly supported JPG files."],["JPG","PDF","Turn JPG images into shareable PDF documents."],["PNG","PDF","Combine PNG images into PDF documents."],["SVG","PNG","Turn scalable vector artwork into a standard PNG image."],["JSON","CSV","Turn structured JSON data into spreadsheet-ready CSV."],["CSV","JSON","Convert tabular CSV data into structured JSON."]];
+const popular=[["HEIC","JPG","Convert HEIC photos to widely supported JPG images."],["WEBP","JPG","Turn modern web images into JPG files for broader compatibility."],["PNG","WEBP","Reduce image size for the web."],["JPG","PNG","Convert JPG images to lossless PNG."],["SVG","PNG","Rasterize vector artwork into PNG."],["AVIF","JPG","Convert AVIF images to broadly supported JPG files."],["JPG","PDF","Turn JPG images into shareable PDF documents."],["PNG","PDF","Combine PNG images into PDF documents."],["PDF","JPG","Render PDF pages as JPG images for previews and sharing."],["TIFF","JPG","Convert TIFF images to widely supported JPG files."],["SVG","PNG","Turn scalable vector artwork into a standard PNG image."],["JSON","CSV","Turn structured JSON data into spreadsheet-ready CSV."],["CSV","JSON","Convert tabular CSV data into structured JSON."]];
 let from=null,to=null;
 const $=s=>document.querySelector(s);
 const fromBtn=$("#fromFormat"),toBtn=$("#toFormat"),fromMenu=$("#fromMenu"),toMenu=$("#toMenu"),fileInput=$("#fileInput"),selectFile=$("#selectFile"),status=$("#status"),dropzone=$("#dropzone"),queue=$("#queue"),quality=$("#quality"),qualityValue=$("#qualityValue"),fitWhite=$("#fitWhite"),maxWidth=$("#maxWidth"),maxHeight=$("#maxHeight");
@@ -122,11 +122,13 @@ async function imageConvert(file,target){
 async function imageToPdf(file){
   if(!window.jspdf||!window.jspdf.jsPDF)throw new Error("The PDF engine did not load. Refresh the page and try again.");
   const img=await decodeImage(file);const w=img.naturalWidth||img.width,h=img.naturalHeight||img.height;
-  const maxW=190,maxH=277,scale=Math.min(maxW/w,maxH/h,1),outW=Math.max(1,w*scale),outH=Math.max(1,h*scale);
-  const c=document.createElement("canvas");c.width=Math.round(outW);c.height=Math.round(outH);const ctx=c.getContext("2d");ctx.fillStyle="#fff";ctx.fillRect(0,0,c.width,c.height);ctx.drawImage(img,0,0,c.width,c.height);
-  const pdf=new window.jspdf.jsPDF({orientation:outW>outH?"landscape":"portrait",unit:"mm",format:"a4"});
-  const pageW=pdf.internal.pageSize.getWidth(),pageH=pdf.internal.pageSize.getHeight(),x=(pageW-outW)/2,y=(pageH-outH)/2;
-  pdf.addImage(c.toDataURL("image/jpeg",quality?Number(quality.value):0.92),"JPEG",Math.max(10,x),Math.max(10,y),Math.min(outW,pageW-20),Math.min(outH,pageH-20));
+  const pdf=new window.jspdf.jsPDF({orientation:w>h?"landscape":"portrait",unit:"mm",format:"a4"});
+  const pageW=pdf.internal.pageSize.getWidth(),pageH=pdf.internal.pageSize.getHeight(),margin=10,ratio=w/h;
+  let drawW=pageW-margin*2,drawH=drawW/ratio;
+  if(drawH>pageH-margin*2){drawH=pageH-margin*2;drawW=drawH*ratio}
+  const c=document.createElement("canvas");c.width=Math.min(w,2400);c.height=Math.max(1,Math.round(c.width/ratio));const ctx=c.getContext("2d");ctx.fillStyle="#fff";ctx.fillRect(0,0,c.width,c.height);ctx.drawImage(img,0,0,c.width,c.height);
+  const x=(pageW-drawW)/2,y=(pageH-drawH)/2;
+  pdf.addImage(c.toDataURL("image/jpeg",quality?Number(quality.value):0.92),"JPEG",x,y,drawW,drawH);
   pdf.save(outputName(file,"PDF"));return {blob:new Blob([], {type:"application/pdf"}),name:outputName(file,"PDF")};
 }
 async function jsonToCsv(file){
