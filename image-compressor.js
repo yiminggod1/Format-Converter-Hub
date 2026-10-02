@@ -27,12 +27,31 @@ async function one(file){
   const img=await decode(file),w=img.naturalWidth||img.width,h=img.naturalHeight||img.height,mw=Math.max(1,Number(maxWidth.value)||w),mh=Math.max(1,Number(maxHeight.value)||h),scale=Math.min(1,mw/w,mh/h),ow=Math.max(1,Math.round(w*scale)),oh=Math.max(1,Math.round(h*scale)),c=document.createElement("canvas");c.width=ow;c.height=oh;
   const ctx=c.getContext("2d");const mime=outputMime(file.type,format.value);if(mime==="image/jpeg"){ctx.fillStyle="#fff";ctx.fillRect(0,0,ow,oh)}ctx.drawImage(img,0,0,ow,oh);
   const q=Number(quality.value),blob=await new Promise((res,rej)=>c.toBlob(x=>x?res(x):rej(new Error("Browser could not encode the image.")),mime,q));
-  const outName=base(file.name)+"-compressed."+extFor(mime);dl(blob,outName);return {before:file.size,after:blob.size,name:outName}
+  const outName=base(file.name)+"-compressed."+extFor(mime);return {before:file.size,after:blob.size,name:outName,blob}
+}
+function humanSize(bytes){
+  if(bytes<1024)return bytes+" B";let n=bytes/1024;const u=["KB","MB","GB"];let i=0;while(n>=1024&&i<u.length-1){n/=1024;i++}return (n<10?n.toFixed(1):Math.round(n))+" "+u[i];
+}
+async function ensureZip(){
+  if(window.JSZip)return window.JSZip;if(window.__zipPromise)return window.__zipPromise;
+  window.__zipPromise=new Promise((resolve,reject)=>{const s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js";s.onload=()=>window.JSZip?resolve(window.JSZip):reject(new Error("ZIP library did not initialize."));s.onerror=()=>reject(new Error("Could not load the ZIP library."));document.head.appendChild(s)});return window.__zipPromise;
 }
 async function compressFiles(files){
+  if(!files.length){status.textContent="Choose at least one image.";return}
+  if(files.length>20){status.textContent="Please compress up to 20 images at a time.";return}
+  const tooLarge=files.find(f=>f.size>100*1024*1024);if(tooLarge){status.textContent=tooLarge.name+" is larger than the 100 MB per-file limit.";return}
   queue.innerHTML="";status.textContent="Compressing "+files.length+" file"+(files.length>1?"s":"")+"…";
-  files.forEach(f=>{const e=document.createElement("div");e.className="queue-item";e.innerHTML="<span>"+f.name+"</span><span class='result'>Working…</span>";queue.appendChild(e)});
-  let saved=0,done=0;const items=[...queue.children];
-  for(let i=0;i<files.length;i++){try{const x=await one(files[i]);saved+=Math.max(0,x.before-x.after);done++;items[i].classList.add("done");items[i].querySelector(".result").textContent=Math.round((1-x.after/x.before)*100)+"% smaller"}catch(e){items[i].classList.add("error");items[i].querySelector(".result").textContent=e.message}}
-  status.textContent=done+" of "+files.length+" compressed. Total bytes saved: "+saved.toLocaleString()+".";
+  files.forEach(f=>{const e=document.createElement("div");e.className="queue-item";const n=document.createElement("span");n.textContent=f.name;n.title=f.name;const res=document.createElement("span");res.className="result";res.textContent=humanSize(f.size);e.append(n,res);queue.appendChild(e)});
+  let saved=0,done=0;const items=[...queue.children],outputs=[];
+  for(let i=0;i<files.length;i++){try{const x=await one(files[i]);saved+=Math.max(0,x.before-x.after);done++;outputs.push(x);items[i].classList.add("done");items[i].querySelector(".result").textContent=x.after<x.before?Math.round((1-x.after/x.before)*100)+"% smaller":"No size reduction"}catch(e){items[i].classList.add("error");items[i].querySelector(".result").textContent=e.message}}
+  if(outputs.length===1){
+    dl(outputs[0].blob,outputs[0].name);
+  }else if(outputs.length>1){
+    try{
+      const Zip=await ensureZip(),zip=new Zip(),used=new Set();
+      outputs.forEach(out=>{let name=out.name,baseName=name,ext="";const dot=name.lastIndexOf(".");if(dot>0){baseName=name.slice(0,dot);ext=name.slice(dot)}let n=2;while(used.has(name)){name=baseName+" ("+n+")"+ext;n++}used.add(name);zip.file(name,out.blob)});
+      const archive=await zip.generateAsync({type:"blob"});dl(archive,"compressed-images.zip");
+    }catch(e){outputs.forEach(out=>dl(out.blob,out.name))}
+  }
+  status.textContent=done+" of "+files.length+" compressed. Total bytes saved: "+humanSize(saved)+(outputs.length>1?" — results bundled as ZIP.":".");
 }
