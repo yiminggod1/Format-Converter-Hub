@@ -37,10 +37,10 @@ function refresh(){
   else status.textContent="";
 }
 selectFile.addEventListener("click",()=>fileInput.click());
-dropzone.addEventListener("click",()=>{if(!selectFile.disabled)fileInput.click()});
-dropzone.addEventListener("dragover",e=>{e.preventDefault();dropzone.style.borderColor="var(--accent)"});
-dropzone.addEventListener("dragleave",()=>dropzone.style.borderColor="");
-dropzone.addEventListener("drop",e=>{e.preventDefault();dropzone.style.borderColor="";if(!selectFile.disabled&&e.dataTransfer.files.length)convertFiles([...e.dataTransfer.files])});
+dropzone.addEventListener("click",()=>{if(!selectFile.disabled)fileInput.click()});\ndropzone.setAttribute("role","button");dropzone.tabIndex=0;dropzone.addEventListener("keydown",e=>{if((e.key==="Enter"||e.key===" ")&&!selectFile.disabled){e.preventDefault();fileInput.click()}});
+dropzone.addEventListener("dragover",e=>{e.preventDefault();dropzone.classList.add("is-dragging")});
+dropzone.addEventListener("dragleave",()=>dropzone.classList.remove("is-dragging"));
+dropzone.addEventListener("drop",e=>{e.preventDefault();dropzone.classList.remove("is-dragging");if(!selectFile.disabled&&e.dataTransfer.files.length)convertFiles([...e.dataTransfer.files])});
 fileInput.addEventListener("change",e=>{if(e.target.files.length)convertFiles([...e.target.files]);fileInput.value=""});
 
 function fileBase(name){return name.replace(/\.[^.]+$/,"")}
@@ -221,7 +221,7 @@ async function deliverOutputs(outputs){
       let name=out.name,base=name,ext="";
       const dot=name.lastIndexOf(".");
       if(dot>0){base=name.slice(0,dot);ext=name.slice(dot)}
-      let n=2;while(used.has(name))name=base+" ("+n+++ ")"+ext;
+      let n=2;while(used.has(name)){name=base+" ("+n+")"+ext;n++;}
       used.add(name);zip.file(name,out.blob);
     });
     const archive=await zip.generateAsync({type:"blob"});
