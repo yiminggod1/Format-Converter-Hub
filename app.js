@@ -1,23 +1,141 @@
 const formats=["JPG","PNG","WEBP","GIF","BMP","TIFF","SVG","AVIF","ICO","HEIC","JSON","CSV","TSV","XML","YAML","TXT","MD","HTML","WAV","MP3","OGG","M4A","MP4","WEBM","MOV"];
-const popular=[["HEIC","JPG","Convert HEIC photos to widely supported JPG images."],["WEBP","JPG","Turn modern web images into JPG files for broader compatibility."],["PNG","WEBP","Reduce image size for the web."],["JPG","PNG","Convert JPG images to lossless PNG."],["SVG","PNG","Rasterize vector artwork into PNG."],["JSON","CSV","Turn structured JSON data into spreadsheet-ready CSV."],["CSV","JSON","Convert tabular CSV data into structured JSON."],["XML","JSON","Convert XML data into JSON."],["YAML","JSON","Convert YAML configuration data into JSON."],["TSV","CSV","Convert tab-separated data into CSV."]];
+const popular=[["HEIC","JPG","Convert HEIC photos to widely supported JPG images."],["WEBP","JPG","Turn modern web images into JPG files for broader compatibility."],["PNG","WEBP","Reduce image size for the web."],["JPG","PNG","Convert JPG images to lossless PNG."],["SVG","PNG","Rasterize vector artwork into PNG."],["AVIF","JPG","Convert AVIF images to broadly supported JPG files."],["SVG","PNG","Turn scalable vector artwork into a standard PNG image."],["JSON","CSV","Turn structured JSON data into spreadsheet-ready CSV."],["CSV","JSON","Convert tabular CSV data into structured JSON."]];
 let from=null,to=null;
-const fromBtn=document.querySelector("#fromFormat"),toBtn=document.querySelector("#toFormat"),fromMenu=document.querySelector("#fromMenu"),toMenu=document.querySelector("#toMenu"),fileInput=document.querySelector("#fileInput"),selectFile=document.querySelector("#selectFile"),status=document.querySelector("#status"),dropzone=document.querySelector("#dropzone");
-function buildMenu(menu,btn,setter){menu.innerHTML=formats.map(function(f){return '<button type="button" data-format="'+f+'">'+f+"</button>"}).join("");menu.addEventListener("click",function(e){const b=e.target.closest("button");if(!b)return;setter(b.dataset.format);menu.classList.remove("open")});btn.addEventListener("click",function(){fromMenu.classList.remove("open");toMenu.classList.remove("open");menu.classList.toggle("open")})}
-buildMenu(fromMenu,fromBtn,function(f){from=f;fromBtn.innerHTML=f+" <span>⌄</span>";refresh()});
-buildMenu(toMenu,toBtn,function(f){to=f;toBtn.innerHTML=f+" <span>⌄</span>";refresh()});
-document.addEventListener("click",function(e){if(!e.target.closest(".format-pick")){fromMenu.classList.remove("open");toMenu.classList.remove("open")}});
-function refresh(){selectFile.disabled=!(from&&to&&from!==to);status.textContent=from&&to&&from!==to?from+" → "+to+" is ready. Choose a file to begin.":from===to&&from?"Choose two different formats.":""}
-selectFile.addEventListener("click",function(){fileInput.click()});
-dropzone.addEventListener("click",function(){if(!selectFile.disabled)fileInput.click()});
-dropzone.addEventListener("dragover",function(e){e.preventDefault();dropzone.style.borderColor="var(--accent)"});
-dropzone.addEventListener("dragleave",function(){dropzone.style.borderColor=""});
-dropzone.addEventListener("drop",function(e){e.preventDefault();dropzone.style.borderColor="";if(!selectFile.disabled&&e.dataTransfer.files[0])convert(e.dataTransfer.files[0])});
-fileInput.addEventListener("change",function(e){if(e.target.files[0])convert(e.target.files[0])});
-function download(blob,name){const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(function(){URL.revokeObjectURL(a.href)},1000)}
-function imageConvert(file,target){const img=new Image();img.onload=function(){const c=document.createElement("canvas");c.width=img.naturalWidth;c.height=img.naturalHeight;const x=c.getContext("2d");if(target==="JPG"){x.fillStyle="#fff";x.fillRect(0,0,c.width,c.height)}x.drawImage(img,0,0);const mime=target==="PNG"?"image/png":target==="WEBP"?"image/webp":"image/jpeg";c.toBlob(function(blob){if(!blob){status.textContent="This browser could not encode that format.";return}download(blob,file.name.replace(/\.[^.]+$/,"")+"."+target.toLowerCase());status.textContent="Done — converted "+file.name+" to "+target+"."},mime,.92)};img.onerror=function(){status.textContent="This image format cannot be decoded by this browser."};img.src=URL.createObjectURL(file)}
-function jsonToCsv(file){const r=new FileReader();r.onload=function(){try{const data=JSON.parse(r.result);const rows=Array.isArray(data)?data:[data];const keys=[];rows.forEach(function(o){Object.keys(o||{}).forEach(function(k){if(keys.indexOf(k)<0)keys.push(k)})});function esc(v){return '"'+String(v==null?"":v).replace(/"/g,'""')+'"'}const csv=[keys.map(esc).join(","),...rows.map(function(o){return keys.map(function(k){return esc(typeof o[k]==="object"?JSON.stringify(o[k]):o[k])}).join(",")})].join("\n");download(new Blob([csv],{type:"text/csv"}),file.name.replace(/\.[^.]+$/,"")+".csv");status.textContent="Done — JSON converted to CSV."}catch(e){status.textContent="Invalid JSON file."}};r.readAsText(file)}
-function csvToJson(file){const r=new FileReader();r.onload=function(){const lines=r.result.replace(/^\uFEFF/,"").trim().split(/\r?\n/);if(lines.length<2){status.textContent="CSV needs a header row and at least one data row.";return}function split(s){return s.split(",").map(function(v){return v.trim().replace(/^"(.*)"$/,"$1").replace(/""/g,'"')})}const headers=split(lines[0]);const data=lines.slice(1).map(function(line){const values=split(line);const row={};headers.forEach(function(h,i){row[h]=values[i]||""});return row});download(new Blob([JSON.stringify(data,null,2)],{type:"application/json"}),file.name.replace(/\.[^.]+$/,"")+".json");status.textContent="Done — CSV converted to JSON."};r.readAsText(file)}
-function convert(file){status.textContent="Working…";const imageIn=["JPG","JPEG","PNG","WEBP","GIF","BMP"].indexOf(from)>=0;const imageOut=["JPG","PNG","WEBP"].indexOf(to)>=0;if(imageIn&&imageOut){imageConvert(file,to);return}if(from==="JSON"&&to==="CSV"){jsonToCsv(file);return}if(from==="CSV"&&to==="JSON"){csvToJson(file);return}status.textContent=from+" → "+to+" is queued for the next engine pack. This route is not falsely advertised as working yet."}
-document.querySelector("#popularGrid").innerHTML=popular.map(function(item){return '<a class="tool-card" href="#converter" onclick="pick(\''+item[0]+'\',\''+item[1]+'\')"><div class="tool-icon">'+item[0]+" → "+item[1]+"</div><h3>"+item[0]+" to "+item[1]+"</h3><p>"+item[2]+"</p></a>"}).join("");
-window.pick=function(a,b){from=a;to=b;fromBtn.innerHTML=a+" <span>⌄</span>";toBtn.innerHTML=b+" <span>⌄</span>";refresh();document.querySelector("#converter").scrollIntoView({behavior:"smooth"})};
-document.querySelector("#formatGrid").innerHTML=formats.map(function(f){return '<div class="format-pill"><b>'+f+"</b></div>"}).join("");
+const $=s=>document.querySelector(s);
+const fromBtn=$("#fromFormat"),toBtn=$("#toFormat"),fromMenu=$("#fromMenu"),toMenu=$("#toMenu"),fileInput=$("#fileInput"),selectFile=$("#selectFile"),status=$("#status"),dropzone=$("#dropzone"),queue=$("#queue"),quality=$("#quality"),qualityValue=$("#qualityValue"),fitWhite=$("#fitWhite");
+
+function buildMenu(menu,btn,setter){
+  menu.innerHTML=formats.map(f=>`<button type="button" data-format="${f}">${f}</button>`).join("");
+  menu.addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;setter(b.dataset.format);menu.classList.remove("open")});
+  btn.addEventListener("click",()=>{fromMenu.classList.remove("open");toMenu.classList.remove("open");menu.classList.toggle("open")});
+}
+buildMenu(fromMenu,fromBtn,f=>{from=f;fromBtn.innerHTML=`${f} <span>⌄</span>`;refresh()});
+buildMenu(toMenu,toBtn,f=>{to=f;toBtn.innerHTML=`${f} <span>⌄</span>`;refresh()});
+document.addEventListener("click",e=>{if(!e.target.closest(".format-pick")){fromMenu.classList.remove("open");toMenu.classList.remove("open")}});
+quality.addEventListener("input",()=>qualityValue.value=`${Math.round(Number(quality.value)*100)}%`);
+
+function isImageFormat(f){return ["JPG","PNG","WEBP","GIF","BMP","AVIF","HEIC","SVG"].includes(f)}
+function supported(from,to){
+  if(from===to)return false;
+  if(isImageFormat(from)&&["JPG","PNG","WEBP"].includes(to))return true;
+  return [["JSON","CSV"],["CSV","JSON"]].some(x=>x[0]===from&&x[1]===to);
+}
+function refresh(){
+  const ready=from&&to&&supported(from,to);
+  selectFile.disabled=!ready;
+  fileInput.accept=from?({JPG:"image/jpeg,.jpg,.jpeg",PNG:"image/png,.png",WEBP:"image/webp,.webp",GIF:"image/gif,.gif",BMP:"image/bmp,.bmp",AVIF:"image/avif,.avif",HEIC:"image/heic,.heic,.heif",SVG:"image/svg+xml,.svg",JSON:"application/json,.json",CSV:"text/csv,.csv"}[from]||""):("");
+  if(from&&to){
+    if(from===to)status.textContent="Choose two different formats.";
+    else if(ready)status.textContent=`${from} → ${to} is ready. Choose one or more files to begin.`;
+    else status.textContent=`${from} → ${to} is on the roadmap. Choose a highlighted route for a working conversion.`;
+  }else status.textContent="";
+}
+selectFile.addEventListener("click",()=>fileInput.click());
+dropzone.addEventListener("click",()=>{if(!selectFile.disabled)fileInput.click()});
+dropzone.addEventListener("dragover",e=>{e.preventDefault();dropzone.style.borderColor="var(--accent)"});
+dropzone.addEventListener("dragleave",()=>dropzone.style.borderColor="");
+dropzone.addEventListener("drop",e=>{e.preventDefault();dropzone.style.borderColor="";if(!selectFile.disabled&&e.dataTransfer.files.length)convertFiles([...e.dataTransfer.files])});
+fileInput.addEventListener("change",e=>{if(e.target.files.length)convertFiles([...e.target.files]);fileInput.value=""});
+
+function fileBase(name){return name.replace(/\.[^.]+$/,"")}
+function outputName(file,ext){return `${fileBase(file.name)}.${ext.toLowerCase()}`}
+function download(blob,name){
+  const url=URL.createObjectURL(blob),a=document.createElement("a");
+  a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1500);
+}
+function blobToImage(blob){
+  return new Promise((resolve,reject)=>{
+    const url=URL.createObjectURL(blob),img=new Image();
+    img.onload=()=>{URL.revokeObjectURL(url);resolve(img)};
+    img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error("Image could not be decoded by this browser."))};
+    img.src=url;
+  });
+}
+function canvasBlob(canvas,mime,q){
+  return new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error("This browser could not encode the requested format.")),mime,q));
+}
+async function loadHeic(){
+  if(typeof window.heic2any==="function")return window.heic2any;
+  throw new Error("The HEIC decoder did not load. Refresh the page and try again.");
+}
+async function heicToImage(file){
+  const heic2any=await loadHeic();
+  const converted=await heic2any({blob:file,toType:"image/png",quality:1});
+  return blobToImage(Array.isArray(converted)?converted[0]:converted);
+}
+async function svgToImage(file){
+  const text=await file.text();
+  if(!/^\s*<svg[\s>]/i.test(text))throw new Error("Invalid SVG file.");
+  const blob=new Blob([text],{type:"image/svg+xml"});
+  return blobToImage(blob);
+}
+async function decodeImage(file){
+  if(from==="HEIC")return heicToImage(file);
+  if(from==="SVG")return svgToImage(file);
+  return blobToImage(file);
+}
+async function imageConvert(file,target){
+  const img=await decodeImage(file);
+  const c=document.createElement("canvas"),w=img.naturalWidth||img.width,h=img.naturalHeight||img.height;
+  if(!w||!h)throw new Error("The image has no usable dimensions.");
+  c.width=w;c.height=h;
+  const ctx=c.getContext("2d",{alpha:true});
+  if(target==="JPG"&&fitWhite.checked){ctx.fillStyle="#fff";ctx.fillRect(0,0,w,h)}
+  ctx.drawImage(img,0,0,w,h);
+  const mime={JPG:"image/jpeg",PNG:"image/png",WEBP:"image/webp"}[target];
+  const blob=await canvasBlob(c,mime,Number(quality.value));
+  return {blob,name:outputName(file,target)};
+}
+async function jsonToCsv(file){
+  const data=JSON.parse(await file.text());
+  const rows=Array.isArray(data)?data:[data];
+  if(!rows.length)return {blob:new Blob([""],{type:"text/csv"}),name:outputName(file,"CSV")};
+  const keys=[];rows.forEach(o=>Object.keys(o&&typeof o==="object"?o:{}).forEach(k=>{if(!keys.includes(k))keys.push(k)}));
+  if(!keys.length)throw new Error("JSON must contain one or more object fields.");
+  const esc=v=>`"${String(v==null?"":typeof v==="object"?JSON.stringify(v):v).replace(/"/g,'""')}"`;
+  const csv=[keys.map(esc).join(","),...rows.map(o=>keys.map(k=>esc(o?o[k]:"")).join(","))].join("\r\n");
+  return {blob:new Blob([csv],{type:"text/csv;charset=utf-8"}),name:outputName(file,"CSV")};
+}
+function parseCsv(text){
+  const rows=[];let row=[],cell="",quoted=false;
+  text=text.replace(/^\uFEFF/,"");
+  for(let i=0;i<text.length;i++){const ch=text[i],next=text[i+1];
+    if(quoted){if(ch==='"'&&next==='"'){cell+='"';i++}else if(ch==='"')quoted=false;else cell+=ch}
+    else if(ch==='"'&&cell==="")quoted=true;
+    else if(ch===","){row.push(cell);cell=""}
+    else if(ch==="\n"){row.push(cell);rows.push(row);row=[];cell=""}
+    else if(ch!=="\r")cell+=ch;
+  }
+  row.push(cell);if(row.length>1||row[0]!=="")rows.push(row);
+  return rows;
+}
+async function csvToJson(file){
+  const rows=parseCsv(await file.text());
+  if(rows.length<2)throw new Error("CSV needs a header row and at least one data row.");
+  const headers=rows[0].map(h=>h.trim());
+  if(headers.some(h=>!h))throw new Error("CSV contains an empty header.");
+  const data=rows.slice(1).filter(r=>r.some(v=>v!=="")).map(r=>Object.fromEntries(headers.map((h,i)=>[h,r[i]??""])));
+  return {blob:new Blob([JSON.stringify(data,null,2)],{type:"application/json;charset=utf-8"}),name:outputName(file,"JSON")};
+}
+async function convertOne(file,item){
+  try{
+    if(isImageFormat(from)&&["JPG","PNG","WEBP"].includes(to)){const out=await imageConvert(file,to);download(out.blob,out.name);item.className="queue-item done";item.querySelector(".result").textContent="Converted ✓";return}
+    if(from==="JSON"&&to==="CSV"){const out=await jsonToCsv(file);download(out.blob,out.name);item.className="queue-item done";item.querySelector(".result").textContent="Converted ✓";return}
+    if(from==="CSV"&&to==="JSON"){const out=await csvToJson(file);download(out.blob,out.name);item.className="queue-item done";item.querySelector(".result").textContent="Converted ✓";return}
+    throw new Error("This conversion route is not enabled yet.");
+  }catch(err){item.className="queue-item error";item.querySelector(".result").textContent=err.message||"Conversion failed."}
+}
+async function convertFiles(files){
+  if(!from||!to||!supported(from,to))return;
+  queue.innerHTML="";
+  files.forEach(file=>{const item=document.createElement("div");item.className="queue-item";item.innerHTML=`<span title="${file.name}">${file.name}</span><span class="result">Waiting…</span>`;queue.appendChild(item)});
+  const items=[...queue.children];status.textContent=`Converting ${files.length} file${files.length>1?"s":""}…`;
+  for(let i=0;i<files.length;i++){await convertOne(files[i],items[i])}
+  const ok=items.filter(x=>x.classList.contains("done")).length;
+  status.textContent=`Finished — ${ok} of ${files.length} file${files.length>1?"s":""} converted.`;
+}
+window.pick=function(a,b){from=a;to=b;fromBtn.innerHTML=`${a} <span>⌄</span>`;toBtn.innerHTML=`${b} <span>⌄</span>`;refresh();$("#converter").scrollIntoView({behavior:"smooth"})};
+$("#popularGrid").innerHTML=popular.map(item=>`<a class="tool-card" href="#converter" onclick="pick('${item[0]}','${item[1]}')"><div class="tool-icon"><span>${item[0]}</span><i>→</i><span>${item[1]}</span></div><h3>${item[0]} to ${item[1]}</h3><p>${item[2]}</p><small class="tool-cap">WORKING ROUTE</small></a>`).join("");
+$("#formatGrid").innerHTML=formats.map(f=>`<div class="format-pill"><b>${f}</b><span>${isImageFormat(f)?"IMAGE":"FORMAT"}</span></div>`).join("");
+refresh();
