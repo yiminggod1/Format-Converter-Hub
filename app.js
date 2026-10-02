@@ -89,12 +89,18 @@ async function pdfToImage(file,target){
   if(pdf.numPages>30)throw new Error("For browser safety, PDFs are limited to 30 pages per batch.");
   const results=[];
   for(let p=1;p<=pdf.numPages;p++){
-    const page=await pdf.getPage(p),viewport=page.getViewport({scale:1.5});
+    if(status)status.textContent=`Rendering PDF page ${p} of ${pdf.numPages}…`;
+    const page=await pdf.getPage(p),baseViewport=page.getViewport({scale:1});
+    const mw=maxWidth&&Number(maxWidth.value)>0?Math.min(3000,Number(maxWidth.value)):3000;
+    const mh=maxHeight&&Number(maxHeight.value)>0?Math.min(3000,Number(maxHeight.value)):3000;
+    const renderScale=Math.min(1.5,mw/baseViewport.width,mh/baseViewport.height);
+    const viewport=page.getViewport({scale:Math.max(.25,renderScale)});
     const c=document.createElement("canvas");c.width=Math.ceil(viewport.width);c.height=Math.ceil(viewport.height);
     await page.render({canvasContext:c.getContext("2d"),viewport}).promise;
     const mime=target==="PNG"?"image/png":target==="WEBP"?"image/webp":"image/jpeg";
     const blob=await canvasBlob(c,mime,quality?Number(quality.value):0.92);
     results.push({blob,name:`${fileBase(file.name)}-page-${p}.${target.toLowerCase()}`});
+    c.width=1;c.height=1;
   }
   return results;
 }
