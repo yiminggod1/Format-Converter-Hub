@@ -17,7 +17,9 @@ if(quality) quality.addEventListener("input",()=>{if(qualityValue)qualityValue.v
 function isImageFormat(f){return ["JPG","PNG","WEBP","GIF","BMP","TIFF","AVIF","HEIC","SVG"].includes(f)}
 function supported(from,to){
   if(from===to)return false;
-  if(isImageFormat(from)&&["JPG","PNG","WEBP"].includes(to))return true;\n  if(from==="PDF"&&["JPG","PNG","WEBP"].includes(to))return true;\n  if(isImageFormat(from)&&to==="PDF")return true;
+  if(isImageFormat(from)&&["JPG","PNG","WEBP"].includes(to))return true;
+  if(from==="PDF"&&["JPG","PNG","WEBP"].includes(to))return true;
+  if(isImageFormat(from)&&to==="PDF")return true;
   return [["JSON","CSV"],["CSV","JSON"]].some(x=>x[0]===from&&x[1]===to);
 }
 function refresh(){
