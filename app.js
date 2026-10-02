@@ -598,7 +598,7 @@ async function convertFiles(files){
   });
   var items=queue?Array.from(queue.children):[];
   var outputs=[];
-  if(isImageFormat(from)&&to==="PDF"&&combinePdf&&safeFiles.length>1){
+  if(isImageFormat(from)&&to==="PDF"&&(!combinePdf||combinePdf.checked)&&safeFiles.length>1){
     try{
       items.forEach(function(item){item.querySelector(".result").textContent="Queued";});
       status.textContent="Combining "+safeFiles.length+" images into one PDF…";
@@ -621,7 +621,7 @@ async function convertFiles(files){
   if(status){
     if(outputs.length>1){
       status.textContent="Finished — "+successful+" file"+(successful===1?"":"s")+" processed, "+outputs.length+" outputs bundled as ZIP.";
-    }else if(isImageFormat(from)&&to==="PDF"&&combinePdf&&safeFiles.length>1){
+    }else if(isImageFormat(from)&&to==="PDF"&&(!combinePdf||combinePdf.checked)&&safeFiles.length>1){
       status.textContent="Finished — "+safeFiles.length+" images combined into one PDF.";
     }else{
       status.textContent="Finished — "+successful+" of "+safeFiles.length+" file"+(safeFiles.length>1?"s":"")+" converted.";
