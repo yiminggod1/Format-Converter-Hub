@@ -1,7 +1,7 @@
 const $=s=>document.querySelector(s);
 const fileInput=$("#compressFiles"),dropzone=$("#compressDrop"),quality=$("#compressQuality"),qualityValue=$("#compressQualityValue"),format=$("#compressFormat"),maxWidth=$("#compressWidth"),maxHeight=$("#compressHeight"),status=$("#compressStatus"),queue=$("#compressQueue");
 quality.addEventListener("input",()=>qualityValue.textContent=Math.round(Number(quality.value)*100)+"%");
-dropzone.addEventListener("click",()=>fileInput.click());
+dropzone.addEventListener("click",()=>fileInput.click());dropzone.setAttribute("role","button");dropzone.tabIndex=0;dropzone.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();fileInput.click()}});
 dropzone.addEventListener("dragover",e=>{e.preventDefault();dropzone.classList.add("is-dragging")});
 dropzone.addEventListener("dragleave",()=>dropzone.classList.remove("is-dragging"));
 dropzone.addEventListener("drop",e=>{e.preventDefault();dropzone.classList.remove("is-dragging");if(e.dataTransfer.files.length)compressFiles([...e.dataTransfer.files])});
@@ -15,7 +15,7 @@ async function decode(file){
   if(file.type==="image/tiff"||/\.tiff?$/i.test(file.name)){
     if(!window.UTIF)throw new Error("TIFF decoder did not load.");
     const b=await file.arrayBuffer(),ifds=UTIF.decode(b);if(!ifds.length)throw new Error("No TIFF image found.");
-    UTIF.decodeImage(b,ifds[0]);const rgba=UTIF.toRGBA8(ifds[0]),c=document.createElement("canvas");c.width=ifds[0].width;c.height=ifds[0].height;c.getContext("2d").putImageData(new ImageData(new Uint8ClampedArray(rgba),c.width,c.height));return imgFromBlob(await new Promise((res,rej)=>c.toBlob(x=>x?res(x):rej(new Error("Could not decode TIFF.")),"image/png")));
+    if(ifds[0].width*ifds[0].height>40000000)throw new Error("This TIFF is too large to process safely in a browser.");UTIF.decodeImage(b,ifds[0]);const rgba=UTIF.toRGBA8(ifds[0]),c=document.createElement("canvas");c.width=ifds[0].width;c.height=ifds[0].height;c.getContext("2d").putImageData(new ImageData(new Uint8ClampedArray(rgba),c.width,c.height));return imgFromBlob(await new Promise((res,rej)=>c.toBlob(x=>x?res(x):rej(new Error("Could not decode TIFF.")),"image/png")));
   }
   if(/\.(heic|heif)$/i.test(file.name)){
     if(!window.heic2any)throw new Error("HEIC decoder did not load.");
@@ -24,7 +24,7 @@ async function decode(file){
   return imgFromBlob(file)
 }
 async function one(file){
-  const img=await decode(file),w=img.naturalWidth||img.width,h=img.naturalHeight||img.height,mw=Math.max(1,Number(maxWidth.value)||w),mh=Math.max(1,Number(maxHeight.value)||h),scale=Math.min(1,mw/w,mh/h),ow=Math.max(1,Math.round(w*scale)),oh=Math.max(1,Math.round(h*scale)),c=document.createElement("canvas");c.width=ow;c.height=oh;
+  const img=await decode(file),w=img.naturalWidth||img.width,h=img.naturalHeight||img.height;if(w*h>50000000)throw new Error("This image is too large to process safely in a browser.");const mw=Math.max(1,Number(maxWidth.value)||w),mh=Math.max(1,Number(maxHeight.value)||h),scale=Math.min(1,mw/w,mh/h),ow=Math.max(1,Math.round(w*scale)),oh=Math.max(1,Math.round(h*scale)),c=document.createElement("canvas");c.width=ow;c.height=oh;
   const ctx=c.getContext("2d");const mime=outputMime(file.type,format.value);if(mime==="image/jpeg"){ctx.fillStyle="#fff";ctx.fillRect(0,0,ow,oh)}ctx.drawImage(img,0,0,ow,oh);
   const q=Number(quality.value),blob=await new Promise((res,rej)=>c.toBlob(x=>x?res(x):rej(new Error("Browser could not encode the image.")),mime,q));
   const outName=base(file.name)+"-compressed."+extFor(mime);return {before:file.size,after:blob.size,name:outName,blob}
