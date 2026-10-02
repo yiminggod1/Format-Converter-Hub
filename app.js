@@ -135,7 +135,7 @@ async function convertFiles(files){
   const ok=items.filter(x=>x.classList.contains("done")).length;
   status.textContent=`Finished — ${ok} of ${files.length} file${files.length>1?"s":""} converted.`;
 }
-window.pick=function(a,b){from=a;to=b;fromBtn.innerHTML=`${a} <span>⌄</span>`;toBtn.innerHTML=`${b} <span>⌄</span>`;refresh();$("#converter").scrollIntoView({behavior:"smooth"})};
+window.pick=function(a,b){from=a;to=b;fromBtn.innerHTML=`${a} <span>⌄</span>`;toBtn.innerHTML=`${b} <span>⌄</span>`;refresh();const target=$("#converter")||$("#tool");if(target)target.scrollIntoView({behavior:"smooth"})};
 const routeSlug={"HEIC-JPG":"heic-to-jpg.html","HEIC-PNG":"heic-to-png.html","WEBP-JPG":"webp-to-jpg.html","WEBP-PNG":"webp-to-png.html","PNG-WEBP":"png-to-webp.html","JPG-WEBP":"jpg-to-webp.html","JPG-PNG":"jpg-to-png.html","SVG-PNG":"svg-to-png.html","AVIF-JPG":"avif-to-jpg.html"};
 $("#popularGrid").innerHTML=popular.map(item=>{const slug=routeSlug[item[0]+"-"+item[1]];return '<a class="tool-card" href="'+(slug||"#converter")+'"'+(slug?"":' onclick="pick(\''+item[0]+'\',\''+item[1]+'\')"' )+'>' + '<div class="tool-icon"><span>'+item[0]+'</span><i>→</i><span>'+item[1]+'</span></div><h3>'+item[0]+' to '+item[1]+'</h3><p>'+item[2]+'</p><small class="tool-cap">'+(slug?"DEDICATED TOOL":"WORKING ROUTE")+'</small></a>'}).join("");
 $("#formatGrid").innerHTML=formats.map(f=>`<div class="format-pill"><b>${f}</b><span>${isImageFormat(f)?"IMAGE":"FORMAT"}</span></div>`).join("");
