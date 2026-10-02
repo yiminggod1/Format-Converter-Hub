@@ -33,6 +33,7 @@ var qualityValue=$("#qualityValue");
 var fitWhite=$("#fitWhite");
 var maxWidth=$("#maxWidth");
 var maxHeight=$("#maxHeight");
+var combinePdf=$("#combinePdf");
 
 function buildMenu(menu,button,setter){
   menu.innerHTML=formats.map(function(format){
@@ -321,35 +322,42 @@ async function imageConvert(file,target){
   return {blob:blob,name:outputName(file,target),width:outputWidth,height:outputHeight};
 }
 
-async function imageToPdf(file){
+async function imageToPdf(files){
   if(!window.jspdf||!window.jspdf.jsPDF)throw new Error("The PDF engine did not load. Refresh the page and try again.");
-  var image=await decodeImage(file);
-  var width=image.naturalWidth||image.width;
-  var height=image.naturalHeight||image.height;
-  if(!width||!height)throw new Error("The image has no usable dimensions.");
-  var pdf=new window.jspdf.jsPDF({orientation:width>height?"landscape":"portrait",unit:"mm",format:"a4"});
-  var pageWidth=pdf.internal.pageSize.getWidth();
-  var pageHeight=pdf.internal.pageSize.getHeight();
-  var margin=10;
-  var ratio=width/height;
-  var drawWidth=pageWidth-margin*2;
-  var drawHeight=drawWidth/ratio;
-  if(drawHeight>pageHeight-margin*2){
-    drawHeight=pageHeight-margin*2;
-    drawWidth=drawHeight*ratio;
+  if(!Array.isArray(files))files=[files];
+  if(files.length>10)throw new Error("Combine up to 10 images into one PDF at a time.");
+  var pdf=null;
+  for(var index=0;index<files.length;index++){
+    var image=await decodeImage(files[index]);
+    var width=image.naturalWidth||image.width;
+    var height=image.naturalHeight||image.height;
+    if(!width||!height)throw new Error("One of the images has no usable dimensions.");
+    if(width*height>50000000)throw new Error(files[index].name+" is too large to place in a PDF safely.");
+    var orientation=width>height?"landscape":"portrait";
+    if(!pdf)pdf=new window.jspdf.jsPDF({orientation:orientation,unit:"mm",format:"a4"});
+    else pdf.addPage("a4",orientation);
+    var pageWidth=pdf.internal.pageSize.getWidth();
+    var pageHeight=pdf.internal.pageSize.getHeight();
+    var margin=10;
+    var ratio=width/height;
+    var drawWidth=pageWidth-margin*2;
+    var drawHeight=drawWidth/ratio;
+    if(drawHeight>pageHeight-margin*2){
+      drawHeight=pageHeight-margin*2;
+      drawWidth=drawHeight*ratio;
+    }
+    var canvas=document.createElement("canvas");
+    canvas.width=Math.min(width,2400);
+    canvas.height=Math.max(1,Math.round(canvas.width/ratio));
+    var context=canvas.getContext("2d");
+    context.fillStyle="#fff";
+    context.fillRect(0,0,canvas.width,canvas.height);
+    context.drawImage(image,0,0,canvas.width,canvas.height);
+    var q=quality?Number(quality.value):.92;
+    pdf.addImage(canvas.toDataURL("image/jpeg",q),"JPEG",(pageWidth-drawWidth)/2,(pageHeight-drawHeight)/2,drawWidth,drawHeight);
+    if(status)status.textContent="Building PDF page "+(index+1)+" of "+files.length+"…";
   }
-  var canvas=document.createElement("canvas");
-  canvas.width=Math.min(width,2400);
-  canvas.height=Math.max(1,Math.round(canvas.width/ratio));
-  var context=canvas.getContext("2d");
-  context.fillStyle="#fff";
-  context.fillRect(0,0,canvas.width,canvas.height);
-  context.drawImage(image,0,0,canvas.width,canvas.height);
-  var x=(pageWidth-drawWidth)/2;
-  var y=(pageHeight-drawHeight)/2;
-  var q=quality?Number(quality.value):.92;
-  pdf.addImage(canvas.toDataURL("image/jpeg",q),"JPEG",x,y,drawWidth,drawHeight);
-  return {blob:pdf.output("blob"),name:outputName(file,"PDF")};
+  return {blob:pdf.output("blob"),name:outputName(files[0],files.length>1?"pdf":"pdf")};
 }
 
 async function jsonToCsv(file){
@@ -440,10 +448,10 @@ async function convertOne(file,item){
       return pageOutputs;
     }
     if(isImageFormat(from)&&to==="PDF"){
-      var pdfOutput=await imageToPdf(file);
+      var singlePdf=await imageToPdf([file]);
       item.className="queue-item done";
-      item.querySelector(".result").textContent="Converted ✓";
-      return [pdfOutput];
+      item.querySelector(".result").textContent="PDF ready ✓";
+      return [singlePdf];
     }
     if(from==="JSON"&&to==="CSV"){
       var csvOutput=await jsonToCsv(file);
@@ -464,6 +472,7 @@ async function convertOne(file,item){
     return [];
   }
 }
+
 
 function ensureZip(){
   if(window.JSZip)return Promise.resolve(window.JSZip);
@@ -562,22 +571,37 @@ async function convertFiles(files){
   });
   var items=queue?Array.from(queue.children):[];
   var outputs=[];
-  if(status)status.textContent="Converting "+safeFiles.length+" file"+(safeFiles.length>1?"s":"")+"…";
-  for(var i=0;i<safeFiles.length;i++){
-    items[i].querySelector(".result").textContent="Working…";
-    var produced=await convertOne(safeFiles[i],items[i]);
-    outputs.push.apply(outputs,produced);
+  if(isImageFormat(from)&&to==="PDF"&&combinePdf&&safeFiles.length>1){
+    try{
+      items.forEach(function(item){item.querySelector(".result").textContent="Queued";});
+      status.textContent="Combining "+safeFiles.length+" images into one PDF…";
+      var combined=await imageToPdf(safeFiles);
+      outputs=[combined];
+      items.forEach(function(item){item.className="queue-item done";item.querySelector(".result").textContent="Added to PDF ✓";});
+    }catch(error){
+      items.forEach(function(item){item.className="queue-item error";item.querySelector(".result").textContent=error.message||"PDF creation failed.";});
+    }
+  }else{
+    if(status)status.textContent="Converting "+safeFiles.length+" file"+(safeFiles.length>1?"s":"")+"…";
+    for(var i=0;i<safeFiles.length;i++){
+      items[i].querySelector(".result").textContent="Working…";
+      var produced=await convertOne(safeFiles[i],items[i]);
+      outputs.push.apply(outputs,produced);
+    }
   }
   await deliverOutputs(outputs);
   var successful=items.filter(function(item){return item.classList.contains("done");}).length;
   if(status){
     if(outputs.length>1){
       status.textContent="Finished — "+successful+" file"+(successful===1?"":"s")+" processed, "+outputs.length+" outputs bundled as ZIP.";
+    }else if(isImageFormat(from)&&to==="PDF"&&combinePdf&&safeFiles.length>1){
+      status.textContent="Finished — "+safeFiles.length+" images combined into one PDF.";
     }else{
       status.textContent="Finished — "+successful+" of "+safeFiles.length+" file"+(safeFiles.length>1?"s":"")+" converted.";
     }
   }
 }
+
 
 window.pick=function(source,target){
   from=source;
