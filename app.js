@@ -77,6 +77,26 @@ if(quality){
   });
 }
 
+var swapControl=document.querySelector(".swap");
+if(swapControl){
+  swapControl.setAttribute("role","button");
+  swapControl.tabIndex=0;
+  swapControl.title="Swap formats";
+  swapControl.addEventListener("click",function(){swapFormats();});
+  swapControl.addEventListener("keydown",function(event){if(event.key==="Enter"||event.key===" "){event.preventDefault();swapFormats();}});
+}
+function swapFormats(){
+  if(!from||!to)return;
+  if(!supported(to,from)){
+    if(status)status.textContent="The reverse conversion is not available yet.";
+    return;
+  }
+  var oldFrom=from;from=to;to=oldFrom;
+  if(fromBtn)fromBtn.innerHTML=from+" <span>⌄</span>";
+  if(toBtn)toBtn.innerHTML=to+" <span>⌄</span>";
+  refresh();
+}
+
 function isImageFormat(format){
   return ["JPG","PNG","WEBP","GIF","BMP","TIFF","AVIF","HEIC","SVG"].indexOf(format)>=0;
 }
@@ -169,6 +189,13 @@ if(fileInput){
     fileInput.value="";
   });
 }
+
+document.addEventListener("paste",function(event){
+  if(!selectFile||selectFile.disabled)return;
+  var items=event.clipboardData&&event.clipboardData.items?Array.from(event.clipboardData.items):[];
+  var imageFiles=items.filter(function(item){return item.kind==="file"&&item.type.indexOf("image/")===0;}).map(function(item){return item.getAsFile();}).filter(Boolean);
+  if(imageFiles.length){event.preventDefault();convertFiles(imageFiles);if(status)status.textContent="Pasted "+imageFiles.length+" image"+(imageFiles.length===1?"":"s")+" from clipboard."}
+});
 
 function fileBase(name){
   return name.replace(/\.[^.]+$/,"");
@@ -438,7 +465,7 @@ async function convertOne(file,item){
     if(isImageFormat(from)&&["JPG","PNG","WEBP"].indexOf(to)>=0){
       var imageOutput=await imageConvert(file,to);
       item.className="queue-item done";
-      item.querySelector(".result").textContent="Converted ✓";
+      item.querySelector(".result").textContent="Converted ✓ "+imageOutput.width+"×"+imageOutput.height;
       return [imageOutput];
     }
     if(from==="PDF"&&["JPG","PNG","WEBP"].indexOf(to)>=0){
