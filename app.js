@@ -106,7 +106,8 @@ async function svgToImage(file){
 }
 async function decodeImage(file){
   if(from==="HEIC")return heicToImage(file);
-  if(from==="SVG")return svgToImage(file);\n  if(from==="TIFF")return tiffToImage(file);
+  if(from==="SVG")return svgToImage(file);
+  if(from==="TIFF")return tiffToImage(file);
   return blobToImage(file);
 }
 async function imageConvert(file,target){
@@ -166,7 +167,9 @@ async function csvToJson(file){
 }
 async function convertOne(file,item){
   try{
-    if(isImageFormat(from)&&["JPG","PNG","WEBP"].includes(to)){const out=await imageConvert(file,to);download(out.blob,out.name);item.className="queue-item done";item.querySelector(".result").textContent="Converted ✓";return}\n    if(from==="PDF"&&["JPG","PNG","WEBP"].includes(to)){const outs=await pdfToImage(file,to);outs.forEach(out=>download(out.blob,out.name));item.className="queue-item done";item.querySelector(".result").textContent=`Converted ${outs.length} page${outs.length===1?"":"s"} ✓`;return}\n    if(isImageFormat(from)&&to==="PDF"){await imageToPdf(file);item.className="queue-item done";item.querySelector(".result").textContent="Converted ✓";return}
+    if(isImageFormat(from)&&["JPG","PNG","WEBP"].includes(to)){const out=await imageConvert(file,to);download(out.blob,out.name);item.className="queue-item done";item.querySelector(".result").textContent="Converted ✓";return}
+    if(from==="PDF"&&["JPG","PNG","WEBP"].includes(to)){const outs=await pdfToImage(file,to);outs.forEach(out=>download(out.blob,out.name));item.className="queue-item done";item.querySelector(".result").textContent=`Converted ${outs.length} page${outs.length===1?"":"s"} ✓`;return}
+    if(isImageFormat(from)&&to==="PDF"){await imageToPdf(file);item.className="queue-item done";item.querySelector(".result").textContent="Converted ✓";return}
     if(from==="JSON"&&to==="CSV"){const out=await jsonToCsv(file);download(out.blob,out.name);item.className="queue-item done";item.querySelector(".result").textContent="Converted ✓";return}
     if(from==="CSV"&&to==="JSON"){const out=await csvToJson(file);download(out.blob,out.name);item.className="queue-item done";item.querySelector(".result").textContent="Converted ✓";return}
     throw new Error("This conversion route is not enabled yet.");
