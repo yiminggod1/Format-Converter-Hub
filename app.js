@@ -2,7 +2,7 @@ const formats=["JPG","PNG","WEBP","GIF","BMP","TIFF","SVG","AVIF","ICO","HEIC","
 const popular=[["HEIC","JPG","Convert HEIC photos to widely supported JPG images."],["WEBP","JPG","Turn modern web images into JPG files for broader compatibility."],["PNG","WEBP","Reduce image size for the web."],["JPG","PNG","Convert JPG images to lossless PNG."],["SVG","PNG","Rasterize vector artwork into PNG."],["AVIF","JPG","Convert AVIF images to broadly supported JPG files."],["SVG","PNG","Turn scalable vector artwork into a standard PNG image."],["JSON","CSV","Turn structured JSON data into spreadsheet-ready CSV."],["CSV","JSON","Convert tabular CSV data into structured JSON."]];
 let from=null,to=null;
 const $=s=>document.querySelector(s);
-const fromBtn=$("#fromFormat"),toBtn=$("#toFormat"),fromMenu=$("#fromMenu"),toMenu=$("#toMenu"),fileInput=$("#fileInput"),selectFile=$("#selectFile"),status=$("#status"),dropzone=$("#dropzone"),queue=$("#queue"),quality=$("#quality"),qualityValue=$("#qualityValue"),fitWhite=$("#fitWhite");
+const fromBtn=$("#fromFormat"),toBtn=$("#toFormat"),fromMenu=$("#fromMenu"),toMenu=$("#toMenu"),fileInput=$("#fileInput"),selectFile=$("#selectFile"),status=$("#status"),dropzone=$("#dropzone"),queue=$("#queue"),quality=$("#quality"),qualityValue=$("#qualityValue"),fitWhite=$("#fitWhite"),maxWidth=$("#maxWidth"),maxHeight=$("#maxHeight");
 
 function buildMenu(menu,btn,setter){
   menu.innerHTML=formats.map(f=>`<button type="button" data-format="${f}">${f}</button>`).join("");
@@ -82,7 +82,7 @@ async function imageConvert(file,target){
   c.width=w;c.height=h;
   const ctx=c.getContext("2d",{alpha:true});
   if(target==="JPG"&&(!fitWhite||fitWhite.checked)){ctx.fillStyle="#fff";ctx.fillRect(0,0,w,h)}
-  ctx.drawImage(img,0,0,w,h);
+  ctx.drawImage(img,0,0,outW,outH);
   const mime={JPG:"image/jpeg",PNG:"image/png",WEBP:"image/webp"}[target];
   const blob=await canvasBlob(c,mime,Number(quality.value));
   return {blob,name:outputName(file,target)};
