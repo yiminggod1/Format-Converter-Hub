@@ -1,0 +1,35 @@
+name: QA static site
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check JavaScript syntax
+        run: |
+          node --check app.js
+          node --check image-compressor.js
+      - name: Check required pages and assets
+        run: |
+          test -f index.html
+          test -f styles.css
+          test -f app.js
+          test -f image-compressor.html
+          test -f image-compressor.js
+          test -f privacy.html
+          test -f terms.html
+          test -f robots.txt
+          test -f sitemap.xml
+      - name: Check sitemap
+        run: |
+          grep -q "https://yiminggod1.github.io/Format-Converter-Hub/" sitemap.xml
+          grep -q "image-compressor.html" sitemap.xml
+          grep -q "pdf-to-jpg.html" sitemap.xml
+      - name: Check core conversion references
+        run: |
+          grep -q 'heic2any' index.html
+          grep -q 'UTIF' index.html
+          grep -q 'pdfjs-dist@6.3.289' app.js
