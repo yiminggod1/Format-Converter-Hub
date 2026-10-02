@@ -134,10 +134,11 @@ async function imageToPdf(file){
   const pageW=pdf.internal.pageSize.getWidth(),pageH=pdf.internal.pageSize.getHeight(),margin=10,ratio=w/h;
   let drawW=pageW-margin*2,drawH=drawW/ratio;
   if(drawH>pageH-margin*2){drawH=pageH-margin*2;drawW=drawH*ratio}
-  const c=document.createElement("canvas");c.width=Math.min(w,2400);c.height=Math.max(1,Math.round(c.width/ratio));const ctx=c.getContext("2d");ctx.fillStyle="#fff";ctx.fillRect(0,0,c.width,c.height);ctx.drawImage(img,0,0,c.width,c.height);
+  const c=document.createElement("canvas");c.width=Math.min(w,2400);c.height=Math.max(1,Math.round(c.width/ratio));
+  const ctx=c.getContext("2d");ctx.fillStyle="#fff";ctx.fillRect(0,0,c.width,c.height);ctx.drawImage(img,0,0,c.width,c.height);
   const x=(pageW-drawW)/2,y=(pageH-drawH)/2;
   pdf.addImage(c.toDataURL("image/jpeg",quality?Number(quality.value):0.92),"JPEG",x,y,drawW,drawH);
-  pdf.save(outputName(file,"PDF"));return {blob:new Blob([], {type:"application/pdf"}),name:outputName(file,"PDF")};
+  return {blob:pdf.output("blob"),name:outputName(file,"PDF")};
 }
 async function jsonToCsv(file){
   const data=JSON.parse(await file.text());
@@ -172,13 +173,46 @@ async function csvToJson(file){
 }
 async function convertOne(file,item){
   try{
-    if(isImageFormat(from)&&["JPG","PNG","WEBP"].includes(to)){const out=await imageConvert(file,to);download(out.blob,out.name);item.className="queue-item done";item.querySelector(".result").textContent="Converted ✓";return}
-    if(from==="PDF"&&["JPG","PNG","WEBP"].includes(to)){const outs=await pdfToImage(file,to);if(outs.length>1&&window.JSZip){const zip=new JSZip();outs.forEach(out=>zip.file(out.name,out.blob));const archive=await zip.generateAsync({type:"blob"});download(archive,outputName(file,"zip"));item.className="queue-item done";item.querySelector(".result").textContent=`Converted ${outs.length} pages → ZIP ✓`;}else{outs.forEach(out=>download(out.blob,out.name));item.className="queue-item done";item.querySelector(".result").textContent=`Converted ${outs.length} page${outs.length===1?"":"s"} ✓`;}return}
-    if(isImageFormat(from)&&to==="PDF"){await imageToPdf(file);item.className="queue-item done";item.querySelector(".result").textContent="Converted ✓";return}
-    if(from==="JSON"&&to==="CSV"){const out=await jsonToCsv(file);download(out.blob,out.name);item.className="queue-item done";item.querySelector(".result").textContent="Converted ✓";return}
-    if(from==="CSV"&&to==="JSON"){const out=await csvToJson(file);download(out.blob,out.name);item.className="queue-item done";item.querySelector(".result").textContent="Converted ✓";return}
+    if(isImageFormat(from)&&["JPG","PNG","WEBP"].includes(to)){
+      const out=await imageConvert(file,to);item.className="queue-item done";item.querySelector(".result").textContent="Converted ✓";return [out];
+    }
+    if(from==="PDF"&&["JPG","PNG","WEBP"].includes(to)){
+      const outs=await pdfToImage(file,to);item.className="queue-item done";item.querySelector(".result").textContent=`Converted ${outs.length} page${outs.length===1?"":"s"} ✓`;return outs;
+    }
+    if(isImageFormat(from)&&to==="PDF"){
+      const out=await imageToPdf(file);item.className="queue-item done";item.querySelector(".result").textContent="Converted ✓";return [out];
+    }
+    if(from==="JSON"&&to==="CSV"){
+      const out=await jsonToCsv(file);item.className="queue-item done";item.querySelector(".result").textContent="Converted ✓";return [out];
+    }
+    if(from==="CSV"&&to==="JSON"){
+      const out=await csvToJson(file);item.className="queue-item done";item.querySelector(".result").textContent="Converted ✓";return [out];
+    }
     throw new Error("This conversion route is not enabled yet.");
-  }catch(err){item.className="queue-item error";item.querySelector(".result").textContent=err.message||"Conversion failed."}
+  }catch(err){
+    item.className="queue-item error";item.querySelector(".result").textContent=err.message||"Conversion failed.";return [];
+  }
+}
+function ensureZip(){
+  if(window.JSZip)return Promise.resolve(window.JSZip);
+  if(window.__zipPromise)return window.__zipPromise;
+  window.__zipPromise=new Promise((resolve,reject)=>{
+    const s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js";s.onload=()=>window.JSZip?resolve(window.JSZip):reject(new Error("ZIP library did not initialize."));s.onerror=()=>reject(new Error("Could not load the ZIP library."));
+    document.head.appendChild(s);
+  });
+  return window.__zipPromise;
+}
+async function deliverOutputs(outputs){
+  if(!outputs.length)return;
+  if(outputs.length===1){download(outputs[0].blob,outputs[0].name);return}
+  try{
+    const Zip=await ensureZip(),zip=new Zip();
+    outputs.forEach(out=>zip.file(out.name,out.blob));
+    const archive=await zip.generateAsync({type:"blob"});
+    download(archive,"format-converter-results.zip");
+  }catch(err){
+    outputs.forEach(out=>download(out.blob,out.name));
+  }
 }
 function humanSize(bytes){
   if(bytes<1024)return bytes+" B";
@@ -194,6 +228,7 @@ function renderQueueItem(file){
 }
 function validateFiles(files){
   const maxFiles=20,maxSize=100*1024*1024;
+  if(!files.length)throw new Error("Choose at least one file.");
   if(files.length>maxFiles)throw new Error("Please convert up to 20 files at a time.");
   const tooLarge=files.find(f=>f.size>maxSize);
   if(tooLarge)throw new Error(tooLarge.name+" is larger than the 100 MB per-file limit.");
@@ -205,14 +240,17 @@ async function convertFiles(files){
   try{safeFiles=validateFiles(files)}catch(err){status.textContent=err.message;return}
   queue.innerHTML="";
   safeFiles.forEach(file=>queue.appendChild(renderQueueItem(file)));
-  const items=[...queue.children];
+  const items=[...queue.children],outputs=[];
   status.textContent=`Converting ${safeFiles.length} file${safeFiles.length>1?"s":""}…`;
   for(let i=0;i<safeFiles.length;i++){
     items[i].querySelector(".result").textContent="Working…";
-    await convertOne(safeFiles[i],items[i]);
+    const produced=await convertOne(safeFiles[i],items[i]);outputs.push(...produced);
   }
+  await deliverOutputs(outputs);
   const ok=items.filter(x=>x.classList.contains("done")).length;
-  status.textContent=`Finished — ${ok} of ${safeFiles.length} file${safeFiles.length>1?"s":""} converted.`;
+  status.textContent=outputs.length>1
+    ?`Finished — ${ok} file${ok===1?"":"s"} processed, ${outputs.length} outputs bundled as ZIP.`
+    :`Finished — ${ok} of ${safeFiles.length} file${safeFiles.length>1?"s":""} converted.`;
 }
 window.pick=function(a,b){from=a;to=b;fromBtn.innerHTML=`${a} <span>⌄</span>`;toBtn.innerHTML=`${b} <span>⌄</span>`;refresh();const target=$("#converter")||$("#tool");if(target)target.scrollIntoView({behavior:"smooth"})};
 const routeSlug={"HEIC-JPG":"heic-to-jpg.html","HEIC-PNG":"heic-to-png.html","WEBP-JPG":"webp-to-jpg.html","WEBP-PNG":"webp-to-png.html","PNG-WEBP":"png-to-webp.html","JPG-WEBP":"jpg-to-webp.html","JPG-PNG":"jpg-to-png.html","SVG-PNG":"svg-to-png.html","AVIF-JPG":"avif-to-jpg.html","JSON-CSV":"json-to-csv.html","CSV-JSON":"csv-to-json.html","JPG-PDF":"jpg-to-pdf.html","PNG-PDF":"png-to-pdf.html","PDF-JPG":"pdf-to-jpg.html","PDF-PNG":"pdf-to-png.html","TIFF-JPG":"tiff-to-jpg.html"};
