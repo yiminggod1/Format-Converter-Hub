@@ -14,16 +14,16 @@ buildMenu(toMenu,toBtn,f=>{to=f;toBtn.innerHTML=`${f} <span>⌄</span>`;refresh(
 document.addEventListener("click",e=>{if(!e.target.closest(".format-pick")){fromMenu.classList.remove("open");toMenu.classList.remove("open")}});
 if(quality) quality.addEventListener("input",()=>{if(qualityValue)qualityValue.value=`${Math.round(Number(quality.value)*100)}%`});
 
-function isImageFormat(f){return ["JPG","PNG","WEBP","GIF","BMP","AVIF","HEIC","SVG"].includes(f)}
+function isImageFormat(f){return ["JPG","PNG","WEBP","GIF","BMP","TIFF","AVIF","HEIC","SVG"].includes(f)}
 function supported(from,to){
   if(from===to)return false;
-  if(isImageFormat(from)&&["JPG","PNG","WEBP"].includes(to))return true;\n  if(isImageFormat(from)&&to==="PDF")return true;
+  if(isImageFormat(from)&&["JPG","PNG","WEBP"].includes(to))return true;\n  if(from==="PDF"&&["JPG","PNG","WEBP"].includes(to))return true;\n  if(isImageFormat(from)&&to==="PDF")return true;
   return [["JSON","CSV"],["CSV","JSON"]].some(x=>x[0]===from&&x[1]===to);
 }
 function refresh(){
   const ready=from&&to&&supported(from,to);
   selectFile.disabled=!ready;
-  fileInput.accept=from?({JPG:"image/jpeg,.jpg,.jpeg",PNG:"image/png,.png",WEBP:"image/webp,.webp",GIF:"image/gif,.gif",BMP:"image/bmp,.bmp",AVIF:"image/avif,.avif",HEIC:"image/heic,.heic,.heif",SVG:"image/svg+xml,.svg",JSON:"application/json,.json",CSV:"text/csv,.csv"}[from]||""):("");
+  fileInput.accept=from?({JPG:"image/jpeg,.jpg,.jpeg",PNG:"image/png,.png",WEBP:"image/webp,.webp",GIF:"image/gif,.gif",BMP:"image/bmp,.bmp",TIFF:"image/tiff,.tif,.tiff",AVIF:"image/avif,.avif",HEIC:"image/heic,.heic,.heif",SVG:"image/svg+xml,.svg",PDF:"application/pdf,.pdf",JSON:"application/json,.json",CSV:"text/csv,.csv"}[from]||""):("");
   if(from&&to){
     if(from===to)status.textContent="Choose two different formats.";
     else if(ready)status.textContent=`${from} → ${to} is ready. Choose one or more files to begin.`;
@@ -64,6 +64,38 @@ async function heicToImage(file){
   const converted=await heic2any({blob:file,toType:"image/png",quality:1});
   return blobToImage(Array.isArray(converted)?converted[0]:converted);
 }
+async function tiffToImage(file){
+  if(!window.UTIF)throw new Error("The TIFF decoder did not load. Refresh the page and try again.");
+  const buffer=await file.arrayBuffer(),ifds=UTIF.decode(buffer);
+  if(!ifds.length)throw new Error("No image was found in this TIFF file.");
+  UTIF.decodeImage(buffer,ifds[0]);
+  const rgba=UTIF.toRGBA8(ifds[0]),w=ifds[0].width,h=ifds[0].height;
+  const c=document.createElement("canvas");c.width=w;c.height=h;
+  const ctx=c.getContext("2d");ctx.putImageData(new ImageData(new Uint8ClampedArray(rgba),w,h));
+  return blobToImage(await canvasBlob(c,"image/png",1));
+}
+async function pdfjs(){
+  if(window.pdfjsLib)return window.pdfjsLib;
+  if(!window.__pdfjsPromise)window.__pdfjsPromise=import("https://cdn.jsdelivr.net/npm/pdfjs-dist@6.3.289/build/pdf.min.mjs").then(m=>{
+    m.GlobalWorkerOptions.workerSrc="https://cdn.jsdelivr.net/npm/pdfjs-dist@6.3.289/build/pdf.worker.min.mjs";
+    window.pdfjsLib=m;return m;
+  });
+  return window.__pdfjsPromise;
+}
+async function pdfToImage(file,target){
+  const pdf=await (await pdfjs()).getDocument({data:await file.arrayBuffer()}).promise;
+  if(pdf.numPages>30)throw new Error("For browser safety, PDFs are limited to 30 pages per batch.");
+  const results=[];
+  for(let p=1;p<=pdf.numPages;p++){
+    const page=await pdf.getPage(p),viewport=page.getViewport({scale:1.5});
+    const c=document.createElement("canvas");c.width=Math.ceil(viewport.width);c.height=Math.ceil(viewport.height);
+    await page.render({canvasContext:c.getContext("2d"),viewport}).promise;
+    const mime=target==="PNG"?"image/png":target==="WEBP"?"image/webp":"image/jpeg";
+    const blob=await canvasBlob(c,mime,quality?Number(quality.value):0.92);
+    results.push({blob,name:`${fileBase(file.name)}-page-${p}.${target.toLowerCase()}`});
+  }
+  return results;
+}
 async function svgToImage(file){
   const text=await file.text();
   if(!/^\s*<svg[\s>]/i.test(text))throw new Error("Invalid SVG file.");
@@ -72,7 +104,7 @@ async function svgToImage(file){
 }
 async function decodeImage(file){
   if(from==="HEIC")return heicToImage(file);
-  if(from==="SVG")return svgToImage(file);
+  if(from==="SVG")return svgToImage(file);\n  if(from==="TIFF")return tiffToImage(file);
   return blobToImage(file);
 }
 async function imageConvert(file,target){
@@ -130,7 +162,7 @@ async function csvToJson(file){
 }
 async function convertOne(file,item){
   try{
-    if(isImageFormat(from)&&["JPG","PNG","WEBP"].includes(to)){const out=await imageConvert(file,to);download(out.blob,out.name);item.className="queue-item done";item.querySelector(".result").textContent="Converted ✓";return}\n    if(isImageFormat(from)&&to==="PDF"){await imageToPdf(file);item.className="queue-item done";item.querySelector(".result").textContent="Converted ✓";return}
+    if(isImageFormat(from)&&["JPG","PNG","WEBP"].includes(to)){const out=await imageConvert(file,to);download(out.blob,out.name);item.className="queue-item done";item.querySelector(".result").textContent="Converted ✓";return}\n    if(from==="PDF"&&["JPG","PNG","WEBP"].includes(to)){const outs=await pdfToImage(file,to);outs.forEach(out=>download(out.blob,out.name));item.className="queue-item done";item.querySelector(".result").textContent=`Converted ${outs.length} page${outs.length===1?"":"s"} ✓`;return}\n    if(isImageFormat(from)&&to==="PDF"){await imageToPdf(file);item.className="queue-item done";item.querySelector(".result").textContent="Converted ✓";return}
     if(from==="JSON"&&to==="CSV"){const out=await jsonToCsv(file);download(out.blob,out.name);item.className="queue-item done";item.querySelector(".result").textContent="Converted ✓";return}
     if(from==="CSV"&&to==="JSON"){const out=await csvToJson(file);download(out.blob,out.name);item.className="queue-item done";item.querySelector(".result").textContent="Converted ✓";return}
     throw new Error("This conversion route is not enabled yet.");
@@ -146,7 +178,7 @@ async function convertFiles(files){
   status.textContent=`Finished — ${ok} of ${files.length} file${files.length>1?"s":""} converted.`;
 }
 window.pick=function(a,b){from=a;to=b;fromBtn.innerHTML=`${a} <span>⌄</span>`;toBtn.innerHTML=`${b} <span>⌄</span>`;refresh();const target=$("#converter")||$("#tool");if(target)target.scrollIntoView({behavior:"smooth"})};
-const routeSlug={"HEIC-JPG":"heic-to-jpg.html","HEIC-PNG":"heic-to-png.html","WEBP-JPG":"webp-to-jpg.html","WEBP-PNG":"webp-to-png.html","PNG-WEBP":"png-to-webp.html","JPG-WEBP":"jpg-to-webp.html","JPG-PNG":"jpg-to-png.html","SVG-PNG":"svg-to-png.html","AVIF-JPG":"avif-to-jpg.html","JSON-CSV":"json-to-csv.html","CSV-JSON":"csv-to-json.html","JPG-PDF":"jpg-to-pdf.html","PNG-PDF":"png-to-pdf.html"};
+const routeSlug={"HEIC-JPG":"heic-to-jpg.html","HEIC-PNG":"heic-to-png.html","WEBP-JPG":"webp-to-jpg.html","WEBP-PNG":"webp-to-png.html","PNG-WEBP":"png-to-webp.html","JPG-WEBP":"jpg-to-webp.html","JPG-PNG":"jpg-to-png.html","SVG-PNG":"svg-to-png.html","AVIF-JPG":"avif-to-jpg.html","JSON-CSV":"json-to-csv.html","CSV-JSON":"csv-to-json.html","JPG-PDF":"jpg-to-pdf.html","PNG-PDF":"png-to-pdf.html","PDF-JPG":"pdf-to-jpg.html","TIFF-JPG":"tiff-to-jpg.html"};
 $("#popularGrid").innerHTML=popular.map(item=>{const slug=routeSlug[item[0]+"-"+item[1]];return '<a class="tool-card" href="'+(slug||"#converter")+'"'+(slug?"":' onclick="pick(\''+item[0]+'\',\''+item[1]+'\')"' )+'>' + '<div class="tool-icon"><span>'+item[0]+'</span><i>→</i><span>'+item[1]+'</span></div><h3>'+item[0]+' to '+item[1]+'</h3><p>'+item[2]+'</p><small class="tool-cap">'+(slug?"DEDICATED TOOL":"WORKING ROUTE")+'</small></a>'}).join("");
 $("#formatGrid").innerHTML=formats.map(f=>`<div class="format-pill"><b>${f}</b><span>${isImageFormat(f)?"IMAGE":"FORMAT"}</span></div>`).join("");
 refresh();
