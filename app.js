@@ -560,7 +560,7 @@ async function convertFiles(files){
   safeFiles.forEach(function(file){
     if(queue)queue.appendChild(renderQueueItem(file));
   });
-  var items=queue?[].slice.call(queue.children):[];
+  var items=queue?Array.from(queue.children):[];
   var outputs=[];
   if(status)status.textContent="Converting "+safeFiles.length+" file"+(safeFiles.length>1?"s":"")+"…";
   for(var i=0;i<safeFiles.length;i++){
@@ -615,7 +615,7 @@ if($("#popularGrid")){
     var key=item[0]+"-"+item[1];
     var slug=routeSlug[key];
     var href=slug||"#converter";
-    var handler=slug?"":" onclick=\\"pick('"+item[0]+"','"+item[1]+"')\\"";
+    var handler=slug ? "" : ' onclick="pick(\''+item[0]+'\',\''+item[1]+'\')"';
     return '<a class="tool-card" href="'+href+'"'+handler+'>'+
       '<div class="tool-icon"><span>'+item[0]+'</span><i>→</i><span>'+item[1]+'</span></div>'+
       '<h3>'+item[0]+' to '+item[1]+'</h3>'+
