@@ -18,3 +18,5 @@
 .format-menu button:disabled{opacity:.3;cursor:not-allowed}.format-menu button:disabled:hover{background:transparent}.dropzone.is-dragging,.compress-drop.is-dragging{border-color:var(--accent);background:#f2e7df}.dropzone:focus-visible,.compress-drop:focus-visible{outline:3px solid rgba(214,90,50,.18);outline-offset:3px}
 
 .format-pill .available{color:#4c6d55;font-weight:800}.format-pill .roadmap{color:#aaa29a;font-weight:700}
+
+.pdf-page-options{padding:0 2px;margin-top:2px}.pdf-page-options label{font-size:11px;color:var(--muted)}.pdf-option{display:none}.drop-hint{display:inline-block;margin-top:8px;font-size:11px;color:#9a968d}.format-menu button:disabled{opacity:.3;cursor:not-allowed}.format-menu button:disabled:hover{background:transparent}.dropzone.is-dragging{border-color:var(--accent);background:#f2e7df}
