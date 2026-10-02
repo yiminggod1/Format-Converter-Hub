@@ -1,4 +1,4 @@
-const formats=["JPG","PNG","WEBP","GIF","BMP","TIFF","SVG","AVIF","ICO","HEIC","JSON","CSV","TSV","XML","YAML","TXT","MD","HTML","WAV","MP3","OGG","M4A","MP4","WEBM","MOV"];
+const formats=["JPG","PNG","WEBP","GIF","BMP","TIFF","SVG","AVIF","ICO","HEIC","PDF","JSON","CSV","TSV","XML","YAML","TXT","MD","HTML","WAV","MP3","OGG","M4A","MP4","WEBM","MOV"];
 const popular=[["HEIC","JPG","Convert HEIC photos to widely supported JPG images."],["WEBP","JPG","Turn modern web images into JPG files for broader compatibility."],["PNG","WEBP","Reduce image size for the web."],["JPG","PNG","Convert JPG images to lossless PNG."],["SVG","PNG","Rasterize vector artwork into PNG."],["AVIF","JPG","Convert AVIF images to broadly supported JPG files."],["SVG","PNG","Turn scalable vector artwork into a standard PNG image."],["JSON","CSV","Turn structured JSON data into spreadsheet-ready CSV."],["CSV","JSON","Convert tabular CSV data into structured JSON."]];
 let from=null,to=null;
 const $=s=>document.querySelector(s);
@@ -17,7 +17,7 @@ if(quality) quality.addEventListener("input",()=>{if(qualityValue)qualityValue.v
 function isImageFormat(f){return ["JPG","PNG","WEBP","GIF","BMP","AVIF","HEIC","SVG"].includes(f)}
 function supported(from,to){
   if(from===to)return false;
-  if(isImageFormat(from)&&["JPG","PNG","WEBP"].includes(to))return true;
+  if(isImageFormat(from)&&["JPG","PNG","WEBP"].includes(to))return true;\n  if(isImageFormat(from)&&to==="PDF")return true;
   return [["JSON","CSV"],["CSV","JSON"]].some(x=>x[0]===from&&x[1]===to);
 }
 function refresh(){
@@ -87,6 +87,16 @@ async function imageConvert(file,target){
   const blob=await canvasBlob(c,mime,Number(quality.value));
   return {blob,name:outputName(file,target)};
 }
+async function imageToPdf(file){
+  if(!window.jspdf||!window.jspdf.jsPDF)throw new Error("The PDF engine did not load. Refresh the page and try again.");
+  const img=await decodeImage(file);const w=img.naturalWidth||img.width,h=img.naturalHeight||img.height;
+  const maxW=190,maxH=277,scale=Math.min(maxW/w,maxH/h,1),outW=Math.max(1,w*scale),outH=Math.max(1,h*scale);
+  const c=document.createElement("canvas");c.width=Math.round(outW);c.height=Math.round(outH);const ctx=c.getContext("2d");ctx.fillStyle="#fff";ctx.fillRect(0,0,c.width,c.height);ctx.drawImage(img,0,0,c.width,c.height);
+  const pdf=new window.jspdf.jsPDF({orientation:outW>outH?"landscape":"portrait",unit:"mm",format:"a4"});
+  const pageW=pdf.internal.pageSize.getWidth(),pageH=pdf.internal.pageSize.getHeight(),x=(pageW-outW)/2,y=(pageH-outH)/2;
+  pdf.addImage(c.toDataURL("image/jpeg",quality?Number(quality.value):0.92),"JPEG",Math.max(10,x),Math.max(10,y),Math.min(outW,pageW-20),Math.min(outH,pageH-20));
+  pdf.save(outputName(file,"PDF"));return {blob:new Blob([], {type:"application/pdf"}),name:outputName(file,"PDF")};
+}
 async function jsonToCsv(file){
   const data=JSON.parse(await file.text());
   const rows=Array.isArray(data)?data:[data];
@@ -120,7 +130,7 @@ async function csvToJson(file){
 }
 async function convertOne(file,item){
   try{
-    if(isImageFormat(from)&&["JPG","PNG","WEBP"].includes(to)){const out=await imageConvert(file,to);download(out.blob,out.name);item.className="queue-item done";item.querySelector(".result").textContent="Converted ✓";return}
+    if(isImageFormat(from)&&["JPG","PNG","WEBP"].includes(to)){const out=await imageConvert(file,to);download(out.blob,out.name);item.className="queue-item done";item.querySelector(".result").textContent="Converted ✓";return}\n    if(isImageFormat(from)&&to==="PDF"){await imageToPdf(file);item.className="queue-item done";item.querySelector(".result").textContent="Converted ✓";return}
     if(from==="JSON"&&to==="CSV"){const out=await jsonToCsv(file);download(out.blob,out.name);item.className="queue-item done";item.querySelector(".result").textContent="Converted ✓";return}
     if(from==="CSV"&&to==="JSON"){const out=await csvToJson(file);download(out.blob,out.name);item.className="queue-item done";item.querySelector(".result").textContent="Converted ✓";return}
     throw new Error("This conversion route is not enabled yet.");
@@ -136,7 +146,7 @@ async function convertFiles(files){
   status.textContent=`Finished — ${ok} of ${files.length} file${files.length>1?"s":""} converted.`;
 }
 window.pick=function(a,b){from=a;to=b;fromBtn.innerHTML=`${a} <span>⌄</span>`;toBtn.innerHTML=`${b} <span>⌄</span>`;refresh();const target=$("#converter")||$("#tool");if(target)target.scrollIntoView({behavior:"smooth"})};
-const routeSlug={"HEIC-JPG":"heic-to-jpg.html","HEIC-PNG":"heic-to-png.html","WEBP-JPG":"webp-to-jpg.html","WEBP-PNG":"webp-to-png.html","PNG-WEBP":"png-to-webp.html","JPG-WEBP":"jpg-to-webp.html","JPG-PNG":"jpg-to-png.html","SVG-PNG":"svg-to-png.html","AVIF-JPG":"avif-to-jpg.html","JSON-CSV":"json-to-csv.html","CSV-JSON":"csv-to-json.html"};
+const routeSlug={"HEIC-JPG":"heic-to-jpg.html","HEIC-PNG":"heic-to-png.html","WEBP-JPG":"webp-to-jpg.html","WEBP-PNG":"webp-to-png.html","PNG-WEBP":"png-to-webp.html","JPG-WEBP":"jpg-to-webp.html","JPG-PNG":"jpg-to-png.html","SVG-PNG":"svg-to-png.html","AVIF-JPG":"avif-to-jpg.html","JSON-CSV":"json-to-csv.html","CSV-JSON":"csv-to-json.html","JPG-PDF":"jpg-to-pdf.html","PNG-PDF":"png-to-pdf.html"};
 $("#popularGrid").innerHTML=popular.map(item=>{const slug=routeSlug[item[0]+"-"+item[1]];return '<a class="tool-card" href="'+(slug||"#converter")+'"'+(slug?"":' onclick="pick(\''+item[0]+'\',\''+item[1]+'\')"' )+'>' + '<div class="tool-icon"><span>'+item[0]+'</span><i>→</i><span>'+item[1]+'</span></div><h3>'+item[0]+' to '+item[1]+'</h3><p>'+item[2]+'</p><small class="tool-cap">'+(slug?"DEDICATED TOOL":"WORKING ROUTE")+'</small></a>'}).join("");
 $("#formatGrid").innerHTML=formats.map(f=>`<div class="format-pill"><b>${f}</b><span>${isImageFormat(f)?"IMAGE":"FORMAT"}</span></div>`).join("");
 refresh();
