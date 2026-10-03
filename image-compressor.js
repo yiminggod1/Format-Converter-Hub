@@ -1,7 +1,10 @@
 const $=s=>document.querySelector(s);
 const fileInput=$("#compressFiles"),dropzone=$("#compressDrop"),quality=$("#compressQuality"),qualityValue=$("#compressQualityValue"),format=$("#compressFormat"),maxWidth=$("#compressWidth"),maxHeight=$("#compressHeight"),status=$("#compressStatus"),queue=$("#compressQueue");
+let busy=false;
 quality.addEventListener("input",()=>qualityValue.textContent=Math.round(Number(quality.value)*100)+"%");
-dropzone.addEventListener("click",()=>fileInput.click());dropzone.setAttribute("role","button");dropzone.tabIndex=0;dropzone.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();fileInput.click()}});
+function syncQuality(){quality.disabled=format.value==="png";qualityValue.style.opacity=quality.disabled?".45":"1";}
+format.addEventListener("change",syncQuality);syncQuality();
+dropzone.addEventListener("click",()=>{if(!busy)fileInput.click()});dropzone.setAttribute("role","button");dropzone.tabIndex=0;dropzone.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();fileInput.click()}});
 dropzone.addEventListener("dragover",e=>{e.preventDefault();dropzone.classList.add("is-dragging")});
 dropzone.addEventListener("dragleave",()=>dropzone.classList.remove("is-dragging"));
 dropzone.addEventListener("drop",e=>{e.preventDefault();dropzone.classList.remove("is-dragging");if(e.dataTransfer.files.length)compressFiles([...e.dataTransfer.files])});
@@ -37,21 +40,30 @@ async function ensureZip(){
   window.__zipPromise=new Promise((resolve,reject)=>{const s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js";s.onload=()=>window.JSZip?resolve(window.JSZip):reject(new Error("ZIP library did not initialize."));s.onerror=()=>reject(new Error("Could not load the ZIP library."));document.head.appendChild(s)});return window.__zipPromise;
 }
 async function compressFiles(files){
+  if(busy)return;
   if(!files.length){status.textContent="Choose at least one image.";return}
   if(files.length>20){status.textContent="Please compress up to 20 images at a time.";return}
   const tooLarge=files.find(f=>f.size>100*1024*1024);if(tooLarge){status.textContent=tooLarge.name+" is larger than the 100 MB per-file limit.";return}
-  queue.innerHTML="";status.textContent="Compressing "+files.length+" file"+(files.length>1?"s":"")+"…";
+  busy=true;dropzone.setAttribute("aria-busy","true");queue.innerHTML="";status.textContent="Compressing "+files.length+" file"+(files.length>1?"s":"")+"…";
   files.forEach(f=>{const e=document.createElement("div");e.className="queue-item";const n=document.createElement("span");n.textContent=f.name;n.title=f.name;const res=document.createElement("span");res.className="result";res.textContent=humanSize(f.size);e.append(n,res);queue.appendChild(e)});
   let saved=0,done=0;const items=[...queue.children],outputs=[];
-  for(let i=0;i<files.length;i++){try{const x=await one(files[i]);saved+=Math.max(0,x.before-x.after);done++;outputs.push(x);items[i].classList.add("done");items[i].querySelector(".result").textContent=x.after<x.before?Math.round((1-x.after/x.before)*100)+"% smaller":"No size reduction"}catch(e){items[i].classList.add("error");items[i].querySelector(".result").textContent=e.message}}
-  if(outputs.length===1){
-    dl(outputs[0].blob,outputs[0].name);
-  }else if(outputs.length>1){
-    try{
+  try{
+    for(let i=0;i<files.length;i++){
+      try{
+        const x=await one(files[i]);saved+=Math.max(0,x.before-x.after);done++;outputs.push(x);items[i].classList.add("done");items[i].querySelector(".result").textContent=x.after<x.before?Math.round((1-x.after/x.before)*100)+"% smaller":"No size reduction";
+      }catch(e){
+        items[i].classList.add("error");items[i].querySelector(".result").textContent=e.message;
+      }
+    }
+    if(outputs.length===1){
+      dl(outputs[0].blob,outputs[0].name);
+    }else if(outputs.length>1){
       const Zip=await ensureZip(),zip=new Zip(),used=new Set();
       outputs.forEach(out=>{let name=out.name,baseName=name,ext="";const dot=name.lastIndexOf(".");if(dot>0){baseName=name.slice(0,dot);ext=name.slice(dot)}let n=2;while(used.has(name)){name=baseName+" ("+n+")"+ext;n++}used.add(name);zip.file(name,out.blob)});
       const archive=await zip.generateAsync({type:"blob"});dl(archive,"compressed-images.zip");
-    }catch(e){outputs.forEach(out=>dl(out.blob,out.name))}
+    }
+    status.textContent=done+" of "+files.length+" compressed. Total bytes saved: "+humanSize(saved)+(outputs.length>1?" — results bundled as ZIP.":".");
+  }finally{
+    busy=false;dropzone.setAttribute("aria-busy","false");
   }
-  status.textContent=done+" of "+files.length+" compressed. Total bytes saved: "+humanSize(saved)+(outputs.length>1?" — results bundled as ZIP.":".");
 }

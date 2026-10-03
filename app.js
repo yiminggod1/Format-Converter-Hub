@@ -34,18 +34,21 @@ var fitWhite=$("#fitWhite");
 var maxWidth=$("#maxWidth");
 var maxHeight=$("#maxHeight");
 var combinePdf=$("#combinePdf");
+var busy=false;
 
 function buildMenu(menu,button,setter){
   menu.innerHTML=formats.map(function(format){
     return '<button type="button" data-format="'+format+'">'+format+"</button>";
   }).join("");
   menu.addEventListener("click",function(event){
+    if(busy)return;
     var item=event.target.closest("button");
     if(!item||item.disabled)return;
     setter(item.dataset.format);
     menu.classList.remove("open");
   });
   button.addEventListener("click",function(){
+    if(busy)return;
     fromMenu.classList.remove("open");
     toMenu.classList.remove("open");
     menu.classList.toggle("open");
@@ -82,11 +85,11 @@ if(swapControl){
   swapControl.setAttribute("role","button");
   swapControl.tabIndex=0;
   swapControl.title="Swap formats";
-  swapControl.addEventListener("click",function(){swapFormats();});
-  swapControl.addEventListener("keydown",function(event){if(event.key==="Enter"||event.key===" "){event.preventDefault();swapFormats();}});
+  swapControl.addEventListener("click",function(){if(!busy)swapFormats();});
+  swapControl.addEventListener("keydown",function(event){if((event.key==="Enter"||event.key===" ")&&!busy){event.preventDefault();swapFormats();}});
 }
 function swapFormats(){
-  if(!from||!to)return;
+  if(busy||!from||!to)return;
   if(!supported(to,from)){
     if(status)status.textContent="The reverse conversion is not available yet.";
     return;
@@ -111,12 +114,14 @@ function supported(source,target){
 
 function refresh(){
   var ready=from&&to&&supported(from,to);
-  if(selectFile)selectFile.disabled=!ready;
+  if(selectFile)selectFile.disabled=!ready||busy;
+  if(swapControl)swapControl.setAttribute("aria-disabled",busy?"true":"false");
+  if(dropzone)dropzone.setAttribute("aria-busy",busy?"true":"false");
   if(fromMenu)fromMenu.querySelectorAll("button").forEach(function(button){
-    button.disabled=!!to&&!supported(button.dataset.format,to);
+    button.disabled=busy||!!to&&!supported(button.dataset.format,to);
   });
   if(toMenu)toMenu.querySelectorAll("button").forEach(function(button){
-    button.disabled=!!from&&!supported(from,button.dataset.format);
+    button.disabled=busy||!!from&&!supported(from,button.dataset.format);
   });
   if(fileInput){
     var accepts={
@@ -135,8 +140,33 @@ function refresh(){
     };
     fileInput.accept=from?(accepts[from]||""):"";
   }
+  var imageTarget=to&&["JPG","PNG","WEBP"].indexOf(to)>=0;
+  var sourceImage=from&&isImageFormat(from);
+  var resizeUseful=(sourceImage&&imageTarget)||(from==="PDF"&&imageTarget);
+  if(quality){
+    var qualityLabel=quality.closest("label");
+    if(qualityLabel)qualityLabel.style.display=(to==="JPG"||to==="WEBP"||to==="PDF")?"flex":"none";
+  }
+  if(fitWhite){
+    var whiteLabel=fitWhite.closest("label");
+    if(whiteLabel)whiteLabel.style.display=to==="JPG"&&sourceImage?"flex":"none";
+  }
+  if(maxWidth){
+    var widthLabel=maxWidth.closest("label");
+    if(widthLabel)widthLabel.style.display=resizeUseful?"flex":"none";
+  }
+  if(maxHeight){
+    var heightLabel=maxHeight.closest("label");
+    if(heightLabel)heightLabel.style.display=resizeUseful?"flex":"none";
+  }
+  if(combinePdf){
+    var combineLabel=combinePdf.closest("label");
+    if(combineLabel)combineLabel.style.display=sourceImage&&to==="PDF"?"flex":"none";
+  }
   if(!status)return;
-  if(from&&to){
+  if(busy){
+    status.textContent="Working… your files are being processed locally.";
+  }else if(from&&to){
     if(from===to)status.textContent="Choose two different formats.";
     else if(ready)status.textContent=from+" → "+to+" is ready. Choose one or more files to begin.";
     else status.textContent=from+" → "+to+" is not available yet. Choose an enabled route or change the target format.";
@@ -148,7 +178,6 @@ function refresh(){
     status.textContent="";
   }
 }
-
 if(selectFile){
   selectFile.addEventListener("click",function(){
     if(fileInput)fileInput.click();
@@ -191,10 +220,23 @@ if(fileInput){
 }
 
 document.addEventListener("paste",function(event){
-  if(!selectFile||selectFile.disabled)return;
+  if(busy||!selectFile||selectFile.disabled)return;
   var items=event.clipboardData&&event.clipboardData.items?Array.from(event.clipboardData.items):[];
-  var imageFiles=items.filter(function(item){return item.kind==="file"&&item.type.indexOf("image/")===0;}).map(function(item){return item.getAsFile();}).filter(Boolean);
-  if(imageFiles.length){event.preventDefault();convertFiles(imageFiles);if(status)status.textContent="Pasted "+imageFiles.length+" image"+(imageFiles.length===1?"":"s")+" from clipboard."}
+  if((from==="JSON"||from==="CSV")&&event.clipboardData&&event.clipboardData.getData("text")){
+    var text=event.clipboardData.getData("text");
+    var extension=from.toLowerCase();
+    var type=from==="JSON"?"application/json":"text/csv";
+    event.preventDefault();
+    convertFiles([new File([text],"pasted."+extension,{type:type})]);
+    return;
+  }
+  if(from==="PNG"){
+    var imageItems=items.filter(function(item){return item.kind==="file"&&item.type==="image/png";});
+    if(imageItems.length){
+      event.preventDefault();
+      convertFiles(imageItems.map(function(item){return item.getAsFile();}).filter(Boolean));
+    }
+  }
 });
 
 function fileBase(name){
@@ -312,19 +354,33 @@ async function pdfToImage(file,target){
 function svgToImage(file){
   return file.text().then(function(source){
     if(!/^\s*<svg[\s>]/i.test(source))throw new Error("Invalid SVG file.");
+    if(typeof DOMParser!=="undefined"&&typeof XMLSerializer!=="undefined"){
+      var documentXml=new DOMParser().parseFromString(source,"image/svg+xml");
+      if(documentXml.querySelector("parsererror"))throw new Error("Invalid SVG file.");
+      documentXml.querySelectorAll("script,foreignObject,iframe,object,embed").forEach(function(node){node.remove();});
+      documentXml.querySelectorAll("*").forEach(function(node){
+        Array.from(node.attributes).forEach(function(attr){
+          if(/^on/i.test(attr.name))node.removeAttribute(attr.name);
+          if((attr.name==="href"||attr.name==="xlink:href")&&/^\s*(https?:|javascript:|data:text\/html)/i.test(attr.value))node.removeAttribute(attr.name);
+        });
+      });
+      source=new XMLSerializer().serializeToString(documentXml.documentElement);
+    }else{
+      source=source.replace(/<script[\s\S]*?<\/script>/gi,"").replace(/\son[a-z]+\s*=\s*(["']).*?\1/gi,"");
+    }
     return blobToImage(new Blob([source],{type:"image/svg+xml"}));
   });
 }
 
-function decodeImage(file){
-  if(from==="HEIC")return heicToImage(file);
-  if(from==="SVG")return svgToImage(file);
-  if(from==="TIFF")return tiffToImage(file);
+function decodeImage(file,sourceFormat){
+  if(sourceFormat==="HEIC")return heicToImage(file);
+  if(sourceFormat==="SVG")return svgToImage(file);
+  if(sourceFormat==="TIFF")return tiffToImage(file);
   return blobToImage(file);
 }
 
-async function imageConvert(file,target){
-  var image=await decodeImage(file);
+async function imageConvert(file,target,sourceFormat){
+  var image=await decodeImage(file,sourceFormat);
   var width=image.naturalWidth||image.width;
   var height=image.naturalHeight||image.height;
   if(!width||!height)throw new Error("The image has no usable dimensions.");
@@ -349,13 +405,13 @@ async function imageConvert(file,target){
   return {blob:blob,name:outputName(file,target),width:outputWidth,height:outputHeight};
 }
 
-async function imageToPdf(files){
+async function imageToPdf(files,sourceFormat){
   if(!window.jspdf||!window.jspdf.jsPDF)throw new Error("The PDF engine did not load. Refresh the page and try again.");
   if(!Array.isArray(files))files=[files];
   if(files.length>10)throw new Error("Combine up to 10 images into one PDF at a time.");
   var pdf=null;
   for(var index=0;index<files.length;index++){
-    var image=await decodeImage(files[index]);
+    var image=await decodeImage(files[index],sourceFormat);
     var width=image.naturalWidth||image.width;
     var height=image.naturalHeight||image.height;
     if(!width||!height)throw new Error("One of the images has no usable dimensions.");
@@ -460,33 +516,33 @@ async function csvToJson(file){
   return {blob:new Blob([JSON.stringify(data,null,2)],{type:"application/json;charset=utf-8"}),name:outputName(file,"JSON")};
 }
 
-async function convertOne(file,item){
+async function convertOne(file,item,sourceFormat,targetFormat){
   try{
-    if(isImageFormat(from)&&["JPG","PNG","WEBP"].indexOf(to)>=0){
-      var imageOutput=await imageConvert(file,to);
+    if(isImageFormat(sourceFormat)&&["JPG","PNG","WEBP"].indexOf(targetFormat)>=0){
+      var imageOutput=await imageConvert(file,targetFormat,sourceFormat);
       item.className="queue-item done";
       item.querySelector(".result").textContent="Converted ✓ "+imageOutput.width+"×"+imageOutput.height;
       return [imageOutput];
     }
-    if(from==="PDF"&&["JPG","PNG","WEBP"].indexOf(to)>=0){
-      var pageOutputs=await pdfToImage(file,to);
+    if(sourceFormat==="PDF"&&["JPG","PNG","WEBP"].indexOf(targetFormat)>=0){
+      var pageOutputs=await pdfToImage(file,targetFormat);
       item.className="queue-item done";
       item.querySelector(".result").textContent="Converted "+pageOutputs.length+" page"+(pageOutputs.length===1?"":"s")+" ✓";
       return pageOutputs;
     }
-    if(isImageFormat(from)&&to==="PDF"){
-      var singlePdf=await imageToPdf([file]);
+    if(isImageFormat(sourceFormat)&&targetFormat==="PDF"){
+      var singlePdf=await imageToPdf([file],sourceFormat);
       item.className="queue-item done";
       item.querySelector(".result").textContent="PDF ready ✓";
       return [singlePdf];
     }
-    if(from==="JSON"&&to==="CSV"){
+    if(sourceFormat==="JSON"&&targetFormat==="CSV"){
       var csvOutput=await jsonToCsv(file);
       item.className="queue-item done";
       item.querySelector(".result").textContent="Converted ✓";
       return [csvOutput];
     }
-    if(from==="CSV"&&to==="JSON"){
+    if(sourceFormat==="CSV"&&targetFormat==="JSON"){
       var jsonOutput=await csvToJson(file);
       item.className="queue-item done";
       item.querySelector(".result").textContent="Converted ✓";
@@ -573,64 +629,97 @@ function renderQueueItem(file){
   return item;
 }
 
-function validateFiles(files){
+function fileMatchesFormat(file,format){
+  var name=file.name.toLowerCase();
+  var type=(file.type||"").toLowerCase();
+  var rules={
+    JPG:{types:["image/jpeg"],extensions:[".jpg",".jpeg"]},
+    PNG:{types:["image/png"],extensions:[".png"]},
+    WEBP:{types:["image/webp"],extensions:[".webp"]},
+    GIF:{types:["image/gif"],extensions:[".gif"]},
+    BMP:{types:["image/bmp"],extensions:[".bmp"]},
+    TIFF:{types:["image/tiff"],extensions:[".tif",".tiff"]},
+    AVIF:{types:["image/avif"],extensions:[".avif"]},
+    HEIC:{types:["image/heic","image/heif"],extensions:[".heic",".heif"]},
+    SVG:{types:["image/svg+xml"],extensions:[".svg"]},
+    PDF:{types:["application/pdf"],extensions:[".pdf"]},
+    JSON:{types:["application/json"],extensions:[".json"]},
+    CSV:{types:["text/csv"],extensions:[".csv"]}
+  };
+  var rule=rules[format];
+  if(!rule)return true;
+  return rule.types.indexOf(type)>=0||rule.extensions.some(function(ext){return name.endsWith(ext);});
+}
+
+function validateFiles(files,source,target){
   var maxFiles=20;
+  if(source==="PDF")maxFiles=5;
+  if(isImageFormat(source)&&target==="PDF"&&combinePdf&&combinePdf.checked)maxFiles=10;
   var maxSize=100*1024*1024;
   if(!files.length)throw new Error("Choose at least one file.");
-  if(files.length>maxFiles)throw new Error("Please convert up to 20 files at a time.");
+  if(files.length>maxFiles)throw new Error("This route supports up to "+maxFiles+" files at a time.");
   var tooLarge=files.find(function(file){return file.size>maxSize;});
   if(tooLarge)throw new Error(tooLarge.name+" is larger than the 100 MB per-file limit.");
+  var wrong=files.find(function(file){return !fileMatchesFormat(file,source);});
+  if(wrong)throw new Error(wrong.name+" does not look like a "+source+" file.");
   return files.filter(function(file){return file&&file.size>=0;});
 }
 
 async function convertFiles(files){
-  if(!from||!to||!supported(from,to))return;
+  if(busy)return;
+  var source=from;
+  var target=to;
+  if(!source||!target||!supported(source,target))return;
   var safeFiles;
   try{
-    safeFiles=validateFiles(files);
+    safeFiles=validateFiles(files,source,target);
   }catch(error){
     if(status)status.textContent=error.message;
     return;
   }
+  busy=true;
+  refresh();
   if(queue)queue.innerHTML="";
   safeFiles.forEach(function(file){
     if(queue)queue.appendChild(renderQueueItem(file));
   });
   var items=queue?Array.from(queue.children):[];
   var outputs=[];
-  if(isImageFormat(from)&&to==="PDF"&&(!combinePdf||combinePdf.checked)&&safeFiles.length>1){
-    try{
+  var finalStatus="";
+  try{
+    if(isImageFormat(source)&&target==="PDF"&&safeFiles.length>1&&(!combinePdf||combinePdf.checked)){
       items.forEach(function(item){item.querySelector(".result").textContent="Queued";});
-      status.textContent="Combining "+safeFiles.length+" images into one PDF…";
-      var combined=await imageToPdf(safeFiles);
+      if(status)status.textContent="Combining "+safeFiles.length+" images into one PDF…";
+      var combined=await imageToPdf(safeFiles,source);
       outputs=[combined];
       items.forEach(function(item){item.className="queue-item done";item.querySelector(".result").textContent="Added to PDF ✓";});
-    }catch(error){
-      items.forEach(function(item){item.className="queue-item error";item.querySelector(".result").textContent=error.message||"PDF creation failed.";});
-    }
-  }else{
-    if(status)status.textContent="Converting "+safeFiles.length+" file"+(safeFiles.length>1?"s":"")+"…";
-    for(var i=0;i<safeFiles.length;i++){
-      items[i].querySelector(".result").textContent="Working…";
-      var produced=await convertOne(safeFiles[i],items[i]);
-      outputs.push.apply(outputs,produced);
-    }
-  }
-  await deliverOutputs(outputs);
-  var successful=items.filter(function(item){return item.classList.contains("done");}).length;
-  if(status){
-    if(outputs.length>1){
-      status.textContent="Finished — "+successful+" file"+(successful===1?"":"s")+" processed, "+outputs.length+" outputs bundled as ZIP.";
-    }else if(isImageFormat(from)&&to==="PDF"&&(!combinePdf||combinePdf.checked)&&safeFiles.length>1){
-      status.textContent="Finished — "+safeFiles.length+" images combined into one PDF.";
+      finalStatus="Finished — "+safeFiles.length+" images combined into one PDF.";
     }else{
-      status.textContent="Finished — "+successful+" of "+safeFiles.length+" file"+(safeFiles.length>1?"s":"")+" converted.";
+      if(status)status.textContent="Converting "+safeFiles.length+" file"+(safeFiles.length>1?"s":"")+"…";
+      for(var i=0;i<safeFiles.length;i++){
+        items[i].querySelector(".result").textContent="Working…";
+        var produced=await convertOne(safeFiles[i],items[i],source,target);
+        outputs.push.apply(outputs,produced);
+      }
+      await deliverOutputs(outputs);
+      var successful=items.filter(function(item){return item.classList.contains("done");}).length;
+      finalStatus=outputs.length>1
+        ?"Finished — "+successful+" file"+(successful===1?"":"s")+" processed, "+outputs.length+" outputs bundled as ZIP."
+        :"Finished — "+successful+" of "+safeFiles.length+" file"+(safeFiles.length>1?"s":"")+" converted.";
     }
+    await deliverOutputs(outputs);
+  }catch(error){
+    finalStatus=error.message||"Conversion failed. Please try another file or format.";
+  }finally{
+    busy=false;
+    refresh();
+    if(status&&finalStatus)status.textContent=finalStatus;
   }
 }
 
 
 window.pick=function(source,target){
+  if(busy)return;
   from=source;
   to=target;
   if(fromBtn)fromBtn.innerHTML=source+" <span>⌄</span>";
