@@ -701,7 +701,6 @@ async function convertFiles(files){
         var produced=await convertOne(safeFiles[i],items[i],source,target);
         outputs.push.apply(outputs,produced);
       }
-      await deliverOutputs(outputs);
       var successful=items.filter(function(item){return item.classList.contains("done");}).length;
       finalStatus=outputs.length>1
         ?"Finished — "+successful+" file"+(successful===1?"":"s")+" processed, "+outputs.length+" outputs bundled as ZIP."
